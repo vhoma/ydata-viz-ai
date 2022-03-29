@@ -6,7 +6,7 @@ import glob
 import os, shutil
 from skimage.transform import resize
 import wget
-from zipfile import ZipFile
+from zipfile import ZipFile, BadZipFile
 import pandas as pd
 import scipy.ndimage
 import json
@@ -45,13 +45,19 @@ def unzip_data(data_path):
     all_zips = sorted(os.listdir(data_path))
     os.chdir(data_path)
     for archive in all_zips:
-        if archive.startswith("."):
+        if archive.startswith(".") or not archive.endswith(".zip"):
+            print(f"...ignore {archive}")
             continue    # ignore hidden files
+        archive_path = os.path.join(data_path, archive)
         print(archive)
-        with ZipFile(archive, 'r') as zip_obj:
-            zip_obj.extractall()
+        try:
+            with ZipFile(archive_path, 'r') as zip_obj:
+                zip_obj.extractall()
+        except BadZipFile as ex:
+            print(f"Skipping {archive} with exception: {ex}")
+            continue
         # delete file after unzip
-        os.remove(archive)
+        os.remove(archive_path)
 
 
 def extract_scans_info(data_path):
@@ -84,7 +90,7 @@ def filter_data_fields(data_fields, max_slice_thickness=2, min_height_mm=100):
     :return: pandas dataframe
     """
     df = pd.DataFrame(data_fields)
-    return df[(df['SliceThickness'] < max_slice_thickness) | (df['SliceThickness'] * df['num_slices'] > min_height_mm)]
+    return df[(df['SliceThickness'] < max_slice_thickness) & (df['SliceThickness'] * df['num_slices'] > min_height_mm)]
 
 
 def save_3d_images(df, data_path):
@@ -107,6 +113,23 @@ def save_3d_images(df, data_path):
         if not name.endswith(".npz") and os.path.isdir(path):
             shutil.rmtree(path)
     df.to_csv(os.path.join(data_path, "data_fields.csv"))
+
+
+def remove_bad_npz(df, data_path):
+    """
+    If need to filter files after they are saved to .npz
+    Remove all files that are not in DF
+    :param df: DataFrame with good images
+    :param data_path: working dir
+    :return: None
+    """
+    for name in os.listdir(data_path):
+        if not name.endswith(".npz"):
+            continue
+        if get_data_fields(name, df) is None:
+            file_path = os.path.join(data_path, name)
+            print(f"{name} is not in DF. removing...")
+            os.remove(file_path)
 
 
 def transform_to_hu_dir(data_path, csv_name="data_fields.csv"):
@@ -200,7 +223,15 @@ def resample(image, data_fields, new_spacing=(1, 1, 1)):
     return image
 
 
-def resample_dir(data_path, csv_name="data_fields.csv"):
+def resample_dir(data_path, csv_name="data_fields.csv", pixel_spacing_mm=(1, 1, 1)):
+    """
+    WARNING: Result will overwrite files in input dir
+    Resample to new scale. New scale is provided in mm.
+    :param data_path: dir with .npz 3d images
+    :param csv_name: name of the csv file with images properties
+    :param pixel_spacing_mm: new pixel spacing along 3 axes in mm (new distance between pixels in mm along x, y, z)
+    :return: None
+    """
     # read data_fields
     df = pd.read_csv(os.path.join(data_path, csv_name), index_col=[0])
 
@@ -214,7 +245,7 @@ def resample_dir(data_path, csv_name="data_fields.csv"):
         data_fields = get_data_fields(name, df)
         if data_fields is None:
             continue
-        new_image = resample(image, data_fields)
+        new_image = resample(image, data_fields, pixel_spacing_mm)
         np.savez(file_path, I=new_image)  # write to the same file
 
 
@@ -224,7 +255,12 @@ def get_data_fields(file_name, df):
     except ValueError:
         print(f"Bad file name: {file_name}")
         return None
-    return df.loc[idx]
+    try:
+        res = df.loc[idx]
+    except KeyError as ex:
+        print(f"KeyError on index {idx}")
+        return None
+    return res
 
 
 def read_ct_scan(input_dir):
