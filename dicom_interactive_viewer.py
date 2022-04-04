@@ -48,7 +48,7 @@ def show_file(file_path):
     ct_img = np.load(file_path)['I']
     global source
     source.data['value'] = [ct_img[:, :, slice_idx.value]]
-    slice_idx.end = ct_img.shape[2]
+    slice_idx.end = ct_img.shape[2] - 1
     return ct_img
 
 
@@ -75,6 +75,7 @@ print(sys.argv)
 #path = "/Users/boriskefer/Documents/coding/YDATA/2021_2022_main/viz_ai/ydata-viz-ai/data_new/CQ500CT0 CQ500CT0/Unknown Study/CT 4cc sec 150cc D3D on"
 path = sys.argv[1]
 img_list = [f_name for f_name in os.listdir(path) if f_name.endswith('npz')]
+img_list.sort(key=lambda x: int(x.split('.')[0].split('_')[-1]))
 
 plot = figure()
 
@@ -85,7 +86,7 @@ plot.image(
     palette='Greys9', level="image"
 )
 
-slice_idx = Slider(title="slice_idx", value=20, start=0, end=36, step=1, width=500)
+slice_idx = Slider(title="slice_idx", value=0, start=0, end=36, step=1, width=500)
 slice_idx.on_change('value', update_data)
 
 hu_filter = RangeSlider(title="hue_filter", value=(0, 100), start=-1000, end=1000, step=1)

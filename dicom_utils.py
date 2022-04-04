@@ -10,16 +10,28 @@ from zipfile import ZipFile, BadZipFile
 import pandas as pd
 import scipy.ndimage
 import json
+import time
 import skimage.morphology as morph
 
 
-def download_data(input_file, data_path, max_files=10):
+def download_data(input_file, data_path, max_files=10, start_idx=0, delay=10):
     """
+    :param delay: delay between downloads in seconds
+    :param start_idx: helps to recover if downloading stuck
     :param max_files: max files to download
     :param input_file: text file with links to download data
     :param data_path: where to save the data
     :return: None
     """
+
+    # create this bar_progress method which is invoked automatically from wget
+    # built in progress bar from wget doesn't work in local env...
+    def bar_progress(current, total, width=80):
+        progress_message = "Downloading: %d%% [%d / %d] bytes" % (current / total * 100, current, total)
+        # Don't use print() as it will print in new line every time.
+        sys.stdout.write("\r" + progress_message)
+        sys.stdout.flush()
+
     # create data_path if needed
     if not os.path.exists(data_path):
         os.makedirs(data_path)
@@ -29,12 +41,19 @@ def download_data(input_file, data_path, max_files=10):
         # start downloading!
         i = 1
         for line in f.readlines():
+            if i < start_idx:
+                i += 1
+                continue
             if i > max_files:
                 print(f"Reached max {max_files}")
                 break
+            print(f'{i}. ' + line)
+            start_stamp = time.time()
+            wget.download(line.replace('\n', ''), data_path, bar=bar_progress)
+            print(f"\n...took {time.time() - start_stamp} sec")
+            print(f'\n...Sleep{delay} sec...')
+            time.sleep(delay)
             i += 1
-            print(line)
-            wget.download(line.replace('\n', ''), data_path)
 
 
 def unzip_data(data_path):
@@ -81,15 +100,15 @@ def extract_scans_info(data_path):
                 keyval['num_slices'] = len(files)
                 data_fields.append(keyval)
                 break
-    return data_fields
+    df = pd.DataFrame(data_fields)
+    return df
 
 
-def filter_data_fields(data_fields, max_slice_thickness=2, min_height_mm=100):
+def filter_data_fields(df, max_slice_thickness=2, min_height_mm=100):
     """
     Filter out scans that are not detailed enough
     :return: pandas dataframe
     """
-    df = pd.DataFrame(data_fields)
     return df[(df['SliceThickness'] < max_slice_thickness) & (df['SliceThickness'] * df['num_slices'] > min_height_mm)]
 
 
@@ -103,8 +122,10 @@ def save_3d_images(df, data_path):
         img3d = read_ct_scan(dir_path)
         file_name = f"{df.loc[i]['PatientID']}_{i}.npz"
         file_path = os.path.join(data_path, file_name)
-        df.loc[i]['path'] = file_path
+        df.loc[i, 'file_path'] = file_path
         np.savez(file_path, I=img3d)
+        # add original shape to df
+        df.loc[i, 'orig_shape'] = str(img3d.shape)
         # now we don't need original slices files anymore
         shutil.rmtree(dir_path)
     # cleanup folders
@@ -247,20 +268,107 @@ def resample_dir(data_path, csv_name="data_fields.csv", pixel_spacing_mm=(1, 1, 
             continue
         new_image = resample(image, data_fields, pixel_spacing_mm)
         np.savez(file_path, I=new_image)  # write to the same file
+        # update DF
+        idx = get_idx_by_name(name)
+        df.loc[idx, 'shape_after_resampling'] = str(new_image.shape)
+        df.loc[idx, 'new_pixel_spacing'] = str(pixel_spacing_mm)
+    # save df with new fields
+    df.to_csv(os.path.join(data_path, "data_fields.csv"))
+
+
+def calculate_new_pixel_size(df, desired_arr_shape=(320, 320, 20)):
+    """
+    Will use new pixel size to resample images as close as possible to desired shape
+    :param df: Data Frame with CT images metadata
+    :param desired_arr_shape: final image shape that we want to achieve
+    :return: (x, y, z) tuple with pixel spacing (pixel size) in mm
+    """
+    # parse original shape
+    tmp = df['orig_shape'].str.split(',', expand=True)
+    shape_x = tmp[0].str.replace('[^0-9.]*', '', regex=True).astype(float)
+    shape_y = tmp[1].str.replace('[^0-9.]*', '', regex=True).astype(float)
+    shape_z = tmp[2].str.replace('[^0-9.]*', '', regex=True).astype(float)
+
+    # parse current pixel spacing for x and y
+    tmp = df['PixelSpacing'].str.split(',', expand=True)
+    pixel_spacing_x = tmp[0].str.replace('[^0-9.]*', '', regex=True).astype(float)
+    pixel_spacing_y = tmp[1].str.replace('[^0-9.]*', '', regex=True).astype(float)
+
+    # get size in mm
+    df['size_x_mm'] = shape_x * pixel_spacing_x
+    df['size_y_mm'] = shape_y * pixel_spacing_y
+    df['size_z_mm'] = shape_z * df['SliceThickness']
+
+    # divide by desired shape and return mean
+    x = (df['size_x_mm'] / desired_arr_shape[0]).mean()
+    y = (df['size_y_mm'] / desired_arr_shape[1]).mean()
+    z = (df['size_z_mm'] / desired_arr_shape[2]).mean()
+    return round(x, 6), round(y, 6), round(z, 6)
+
+
+def adjust_size(img, new_shape=(320, 320, 20), default_value=-1000):
+    """
+    Achieve desired shape using crop and padding
+    :param default_value: will use this value for padding
+    :param img: numpy 3d array
+    :param new_shape: tuple of sizes in px (x, y, z)
+    :return: numpy array with new shape
+    """
+    # first crop (if needed)
+    margin0 = [0, 0, 0]   # lower margin
+    margin1 = [0, 0, 0]   # upper margin - it can be different if size diff is odd
+    for i in range(3):
+        margin0[i] = (img.shape[i] - new_shape[i]) // 2 if img.shape[i] >= new_shape[i] else 0
+        margin1[i] = img.shape[i] - new_shape[i] - margin0[i] if img.shape[i] >= new_shape[i] else 0
+    img1 = img[margin0[0]: img.shape[0] - margin1[0], margin0[1]: img.shape[1] - margin1[1], margin0[2]: img.shape[2] - margin1[2]]
+    # now add padding if needed
+    for i in range(3):
+        margin0[i] = (new_shape[i] - img.shape[i]) // 2 if img.shape[i] < new_shape[i] else 0
+        margin1[i] = new_shape[i] - img.shape[i] - margin0[i] if img.shape[i] < new_shape[i] else 0
+    res = np.ones(new_shape) * default_value
+    res[margin0[0]: res.shape[0] - margin1[0], margin0[1]: res.shape[1] - margin1[1], margin0[2]: res.shape[2] - margin1[2]] = img1
+    return res
+
+
+def adjust_size_dir(data_path, new_shape=(320, 320, 20)):
+    """
+    Achieve desired shape using crop and padding on all files in dir
+    :param data_path: target dir
+    :param new_shape: tuple of sizes in px (x, y, z)
+    :return: None
+    """
+    for name in os.listdir(data_path):
+        file_path = os.path.join(data_path, name)
+        if not name.endswith(".npz"):
+            continue
+        print(f"adjust_size {file_path}")
+        image = np.load(file_path)['I']
+        new_image = adjust_size(image, new_shape)
+        np.savez(file_path, I=new_image)   # write to the same file
 
 
 def get_data_fields(file_name, df):
-    try:
-        idx = int(file_name.split('.')[0].split('_')[-1])
-    except ValueError:
-        print(f"Bad file name: {file_name}")
-        return None
+    idx = get_idx_by_name(file_name)
     try:
         res = df.loc[idx]
     except KeyError as ex:
         print(f"KeyError on index {idx}")
         return None
     return res
+
+
+def get_idx_by_name(file_name):
+    try:
+        idx = int(file_name.split('.')[0].split('_')[-1])
+    except ValueError:
+        print(f"Bad file name: {file_name}")
+        return None
+    return idx
+
+
+def get_image_by_id(df, idx, data_path):
+    file_name = f"{df.loc[idx]['PatientID']}_{idx}.npz"
+    return np.load(os.path.join(data_path, file_name))['I']
 
 
 def read_ct_scan(input_dir):
