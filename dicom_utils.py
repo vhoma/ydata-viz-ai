@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 import glob
-import os, shutil
+import os
+import shutil
 from skimage.transform import resize
 import wget
 from zipfile import ZipFile, BadZipFile
@@ -147,8 +148,8 @@ def clean_up(data_path, keep_types=(".npz", ".csv")):
     """
     for name in os.listdir(data_path):
         path = os.path.join(data_path, name)
-        print(f"Cleaning {path}...")
         if not any(name.endswith(e) for e in keep_types) and os.path.isdir(path):
+            print(f"Cleaning {path}...")
             shutil.rmtree(path)
 
 
@@ -322,9 +323,20 @@ def calculate_new_pixel_size(df, desired_arr_shape=(320, 320, 20)):
     return round(x, 6), round(y, 6), round(z, 6)
 
 
-def adjust_size(img, new_shape=(320, 320, 20), default_value=-1000):
+def count_empty_slices(img, empty_slice_threshold):
+    empty_slices = 0
+    for i in range(img.shape[2] - 1, -1, -1):
+        if img[:, :, i].mean() < empty_slice_threshold:
+            empty_slices += 1
+        else:
+            break
+    return empty_slices
+
+
+def adjust_size(img, new_shape=(320, 320, 20), default_value=-1000, empty_slice_threshold=-970):
     """
     Achieve desired shape using crop and padding
+    :param empty_slice_threshold: slice is considered empty if mean value is less then this
     :param default_value: will use this value for padding
     :param img: numpy 3d array
     :param new_shape: tuple of sizes in px (x, y, z)
@@ -333,9 +345,20 @@ def adjust_size(img, new_shape=(320, 320, 20), default_value=-1000):
     # first crop (if needed)
     margin0 = [0, 0, 0]   # lower margin
     margin1 = [0, 0, 0]   # upper margin - it can be different if size diff is odd
-    for i in range(3):
+    for i in range(2):
         margin0[i] = (img.shape[i] - new_shape[i]) // 2 if img.shape[i] >= new_shape[i] else 0
         margin1[i] = img.shape[i] - new_shape[i] - margin0[i] if img.shape[i] >= new_shape[i] else 0
+    if img.shape[2] >= new_shape[2]:
+        """
+        Axis Z is special case
+        Will remove as much slices as possible from the top of the image (remove only empty slices)
+        The rest will be removed from the bottom of the image.
+        """
+        # count empty slices
+        empty_slices = count_empty_slices(img, empty_slice_threshold)
+        margin1[2] = empty_slices if empty_slices <= img.shape[2] - new_shape[2] else img.shape[2] - new_shape[2]
+        margin0[2] = img.shape[2] - new_shape[2] - margin1[2]
+
     img1 = img[margin0[0]: img.shape[0] - margin1[0], margin0[1]: img.shape[1] - margin1[1], margin0[2]: img.shape[2] - margin1[2]]
     # now add padding if needed
     for i in range(3):
@@ -442,6 +465,7 @@ def scale_ct_img(img3d, shape):
     shape = shape + (img3d['data'].shape[2],)
     img_resized = resize(img3d['data'], shape)
     return {'data': img_resized, 'aspect': img3d['aspect']}
+
 
 def fast_check_orig_files(df):
     """
