@@ -126,6 +126,9 @@ def save_3d_images(df, data_path):
         file_name = f"{df.loc[i]['PatientID']}_{i}.npz"
         file_path = os.path.join(data_path, file_name)
         df.loc[i, 'file_path'] = file_path
+        #here I suggest adding index, for example _3d to the name of file
+        #file_name_new = file_name + '_3d'
+        # file_name_new = os.path.join(data_path, file_name_new)
         np.savez(file_path, I=img3d)
         # add original shape to df
         df.loc[i, 'orig_shape'] = str(img3d.shape)
@@ -384,10 +387,12 @@ def get_image_by_id(df, idx, data_path):
     return np.load(os.path.join(data_path, file_name))['I']
 
 
-def read_ct_scan(input_dir):
+def read_ct_scan(input_dir, verboze=True):
     # load the DICOM files
     files = []
-    print('glob: {}'.format(input_dir))
+    #check
+    if verboze:
+        print('glob: {}'.format(input_dir))
     for fname in glob.glob(os.path.join(input_dir, "*"), recursive=False):
         # print("loading: {}".format(fname))
         files.append(pydicom.dcmread(fname))
@@ -402,8 +407,8 @@ def read_ct_scan(input_dir):
             slices.append(f)
         else:
             skipcount = skipcount + 1
-
-    print("skipped, no SliceLocation: {}".format(skipcount))
+    if verboze:
+        print("skipped, no SliceLocation: {}".format(skipcount))
 
     # ensure they are in the correct order
     slices = sorted(slices, key=lambda s: s.SliceLocation)
@@ -437,6 +442,36 @@ def scale_ct_img(img3d, shape):
     shape = shape + (img3d['data'].shape[2],)
     img_resized = resize(img3d['data'], shape)
     return {'data': img_resized, 'aspect': img3d['aspect']}
+
+def fast_check_orig_files(df):
+    """
+    printing of all original scans in coronal plane
+    """
+    num_files= len(df)
+    print(num_files)
+    fig, axis = plt.subplots(num_files//3+1, 3, figsize=(num_files, num_files*4))
+    #fig, axis = plt.subplots(19, 3, figsize=(16, 64))
+    s=j=0
+    for i in df.index:
+        dir_path = df.loc[i]['path']
+        ps = df.loc[i]['PixelSpacing']
+        ss = df.loc[i]['SliceThickness']
+        img3d = read_ct_scan(dir_path, False)
+        #ax_aspect = (ps[1]) / (ps[0])
+        #sag_aspect = (ps[1]) / ss
+        cor_aspect = ss / (ps[0])
+        image = np.flip(img3d, axis=None)
+        img_shape = image.shape
+        axis[s][j].imshow(image[img_shape[0]//2, :, :].T, cmap='gray')
+        axis[s][j].set_aspect(cor_aspect)
+        axis[s][j].set_title('Patient_'+ str(i) + ' coronal plane', fontsize=50)
+        if j == 2:
+          s+=1
+          j=0
+        else:
+          j+=1
+    plt.subplots_adjust(wspace=0.5, hspace=0.3)
+    plt.show()
 
 
 if __name__ == "__main__":
