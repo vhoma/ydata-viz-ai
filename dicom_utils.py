@@ -79,8 +79,9 @@ def unzip_data(data_path):
         os.remove(archive_path)
 
 
-def extract_scans_info(data_path):
+def extract_scans_info(data_path, save_to_file="original_data_fields.csv"):
     """
+    :param save_to_file: save dataframe to file, if None - will ignore
     :param data_path: path where data is tored
     :return: list of dicts not including pixel data
     """
@@ -101,6 +102,8 @@ def extract_scans_info(data_path):
                 data_fields.append(keyval)
                 break
     df = pd.DataFrame(data_fields)
+    if save_to_file:
+        df.to_csv(os.path.join(data_path, save_to_file))
     return df
 
 
@@ -129,11 +132,21 @@ def save_3d_images(df, data_path):
         # now we don't need original slices files anymore
         shutil.rmtree(dir_path)
     # cleanup folders
+    df.to_csv(os.path.join(data_path, "data_fields.csv"))
+
+
+def clean_up(data_path, keep_types=(".npz", ".csv")):
+    """
+    Remove recursively all folders, exclude special types
+    :param keep_types: tuple of types (file endings) to keep
+    :param data_path: working dir
+    :return: None
+    """
     for name in os.listdir(data_path):
         path = os.path.join(data_path, name)
-        if not name.endswith(".npz") and os.path.isdir(path):
+        print(f"Cleaning {path}...")
+        if not any(name.endswith(e) for e in keep_types) and os.path.isdir(path):
             shutil.rmtree(path)
-    df.to_csv(os.path.join(data_path, "data_fields.csv"))
 
 
 def remove_bad_npz(df, data_path):
