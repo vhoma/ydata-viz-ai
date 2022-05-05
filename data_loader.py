@@ -42,9 +42,15 @@ class Img3dDataSet(Dataset):
         # transform original image twice
         t1, m1, alpha1 = transform(img3d)
         t2, m2, alpha2 = transform(img3d)
+        print("...transformed with angles: {} {}".format(alpha1, alpha2))
 
         # find transform matrix from 1st to 2nd
-        matrix = affine.Affine3dRotateMatrix(alpha2 - alpha1)
+        matrix = affine.Affine3dRotateCenterMatrix(alpha2 - alpha1, img3d.shape, axis=2)
+
+        # transpose images and remove last row from the matrix
+        t1 = t1.transpose(2, 0, 1)
+        t2 = t2.transpose(2, 0, 1)
+        matrix = matrix[:3, :]
 
         # convert to torch
         return torch.from_numpy(t1).float(), torch.from_numpy(t2).float(), matrix
