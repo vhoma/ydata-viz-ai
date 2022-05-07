@@ -77,10 +77,13 @@ class Learner:
         return loss_history
 
 
-def main(data_path, learning_rate, step_size, gamma, num_epochs, min_val, max_val):
+def main(data_path, learning_rate, step_size, gamma, num_epochs, min_val, max_val, seed=None):
     # set logging level
     logging.basicConfig()
     logging.getLogger().setLevel(logging.INFO)
+
+    # set random seed
+    np.random.seed(seed)
 
     # train
     learner = Learner(data_path, num_epochs, learning_rate, step_size, gamma, min_val, max_val)
@@ -116,6 +119,7 @@ def get_args():
     parser.add_argument('--num-epochs', required=False, type=int, default=100, help='Number of epochs')
     parser.add_argument('--min-val', required=False, type=int, default=-1000, help='Min value for normalization')
     parser.add_argument('--max-val', required=False, type=int, default=1000, help='Max value for normalization')
+    parser.add_argument('--seed', required=False, type=int, help='Random seed')
     return vars(parser.parse_args())
 
 

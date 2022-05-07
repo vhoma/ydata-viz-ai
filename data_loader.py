@@ -21,10 +21,9 @@ def normalize(img, min_val, max_val):
     return (img - min_val) / (max_val - min_val)
 
 
-def transform(img):
-    alpha = np.random.randint(-45, 45)
-    m = affine.Affine3dRotateCenterMatrix(alpha, img.shape, axis=2)
-    return affine_transform(img, m), m, alpha
+def transform(img, angle):
+    m = affine.Affine3dRotateCenterMatrix(angle, img.shape, axis=2)
+    return affine_transform(img, m), m
 
 
 class Img3dDataSet(Dataset):
@@ -43,8 +42,10 @@ class Img3dDataSet(Dataset):
         img3d = normalize(img3d, self.min_val, self.max_val)
 
         # transform original image twice
-        t1, m1, alpha1 = transform(img3d)
-        t2, m2, alpha2 = transform(img3d)
+        alpha1 = np.random.randint(-45, 45)
+        t1, m1 = transform(img3d, alpha1)
+        alpha2 = np.random.randint(-45, 45)
+        t2, m2 = transform(img3d, alpha2)
         logging.debug("...transformed with angles: {} {}".format(alpha1, alpha2))
 
         # find transform matrix from 1st to 2nd
@@ -62,10 +63,11 @@ class Img3dDataSet(Dataset):
         return len(self.names_array)
 
 
-def main(data_path, archive_path, min_val, max_val):
+def main(data_path, archive_path, min_val, max_val, seed=None):
     """
     consider this a unit test
     """
+    np.random.seed(seed)
     # set logging level
     logging.basicConfig()
     logging.getLogger().setLevel(logging.INFO)
@@ -86,6 +88,7 @@ def get_args():
     parser.add_argument('--data-path', required=False, type=str, default="./data", help='Working directory')
     parser.add_argument('--min-val', required=False, type=int, default=-1000, help='Min value for normalization')
     parser.add_argument('--max-val', required=False, type=int, default=1000, help='Max value for normalization')
+    parser.add_argument('--seed', required=False, type=int, help='Random seed')
     return vars(parser.parse_args())
 
 
