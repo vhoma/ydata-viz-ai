@@ -1,4 +1,7 @@
 import os
+import sys
+import argparse
+import logging
 from zipfile import ZipFile, BadZipFile
 import numpy as np
 import matplotlib.pyplot as plt
@@ -42,7 +45,7 @@ class Img3dDataSet(Dataset):
         # transform original image twice
         t1, m1, alpha1 = transform(img3d)
         t2, m2, alpha2 = transform(img3d)
-        print("...transformed with angles: {} {}".format(alpha1, alpha2))
+        logging.debug("...transformed with angles: {} {}".format(alpha1, alpha2))
 
         # find transform matrix from 1st to 2nd
         matrix = affine.Affine3dRotateCenterMatrix(alpha2 - alpha1, img3d.shape, axis=2)
@@ -59,16 +62,34 @@ class Img3dDataSet(Dataset):
         return len(self.names_array)
 
 
-if __name__ == "__main__":
-    curr_path = "."
-    d_path = "./data"
-    arch_path = os.path.join(curr_path, "data100.zip")
-    #unzip_data(d_path, arch_path)
-    dataset = Img3dDataSet(d_path, -1000, 1000)
+def main(data_path, archive_path, min_val, max_val):
+    """
+    consider this a unit test
+    """
+    # set logging level
+    logging.basicConfig()
+    logging.getLogger().setLevel(logging.INFO)
+    # unzip_data(data_path, archive_path)
+    dataset = Img3dDataSet(data_path, min_val, max_val)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
     x, y, mtrx = next(iter(dataloader))
-    print(mtrx)
-    plt.imshow(x[0][:, :, 10])
+    logging.info(f"Transformation matrix: {mtrx}")
+    plt.imshow(x[0][10, :, :])
     plt.show()
-    plt.imshow(y[0][:, :, 10])
+    plt.imshow(y[0][10, :, :])
     plt.show()
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description=sys.argv[0])
+    parser.add_argument('--archive-path', required=True, type=str, help='Zip file with data')
+    parser.add_argument('--data-path', required=False, type=str, default="./data", help='Working directory')
+    parser.add_argument('--min-val', required=False, type=int, default=-1000, help='Min value for normalization')
+    parser.add_argument('--max-val', required=False, type=int, default=1000, help='Max value for normalization')
+    return vars(parser.parse_args())
+
+
+if '__main__' == __name__:
+    args = get_args()
+    print(args)
+    main(**args)
