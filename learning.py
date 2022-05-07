@@ -1,5 +1,6 @@
 import nn_architecture
 import data_loader as dl
+from data_loader import LOG_LEVELS, set_log_level
 
 import logging
 import numpy as np
@@ -77,10 +78,9 @@ class Learner:
         return loss_history
 
 
-def main(data_path, learning_rate, step_size, gamma, num_epochs, min_val, max_val, seed=None):
+def main(data_path, learning_rate, step_size, gamma, num_epochs, min_val, max_val, log_level, seed=None):
     # set logging level
-    logging.basicConfig()
-    logging.getLogger().setLevel(logging.INFO)
+    set_log_level(log_level)
 
     # set random seed
     np.random.seed(seed)
@@ -116,10 +116,11 @@ def get_args():
     parser.add_argument('--learning-rate', required=False, type=float, default=0.005, help='Min value for normalization')
     parser.add_argument('--step-size', required=False, type=int, default=15, help='Scheduler step size')
     parser.add_argument('--gamma', required=False, type=float, default=0.8, help='Gamma value for scheduler')
-    parser.add_argument('--num-epochs', required=False, type=int, default=100, help='Number of epochs')
+    parser.add_argument('--num-epochs', required=False, type=int, default=200, help='Number of epochs')
     parser.add_argument('--min-val', required=False, type=int, default=-1000, help='Min value for normalization')
     parser.add_argument('--max-val', required=False, type=int, default=1000, help='Max value for normalization')
     parser.add_argument('--seed', required=False, type=int, help='Random seed')
+    parser.add_argument('--log-level', default="info", choices=LOG_LEVELS.keys(), help='Logging level, default "info"')
     return vars(parser.parse_args())
 
 

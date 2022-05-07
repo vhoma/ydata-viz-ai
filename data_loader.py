@@ -11,6 +11,16 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 
+LOG_LEVELS = {
+    'critical': logging.CRITICAL,
+    'error': logging.ERROR,
+    'warn': logging.WARNING,
+    'warning': logging.WARNING,
+    'info': logging.INFO,
+    'debug': logging.DEBUG
+}
+
+
 def unzip_data(data_path, archive_path):
     print(f"Unzip '{archive_path}'...")
     with ZipFile(archive_path, 'r') as zip_obj:
@@ -63,14 +73,19 @@ class Img3dDataSet(Dataset):
         return len(self.names_array)
 
 
-def main(data_path, archive_path, min_val, max_val, seed=None):
+def set_log_level(log_level):
+    # set logging level
+    logging.basicConfig()
+    logging.getLogger().setLevel(LOG_LEVELS.get(log_level, logging.INFO))
+
+
+def main(data_path, archive_path, min_val, max_val, log_level, seed=None):
     """
     consider this a unit test
     """
     np.random.seed(seed)
-    # set logging level
-    logging.basicConfig()
-    logging.getLogger().setLevel(logging.INFO)
+    set_log_level(log_level)
+
     # unzip_data(data_path, archive_path)
     dataset = Img3dDataSet(data_path, min_val, max_val)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
@@ -85,10 +100,11 @@ def main(data_path, archive_path, min_val, max_val, seed=None):
 def get_args():
     parser = argparse.ArgumentParser(description=sys.argv[0])
     parser.add_argument('--archive-path', required=True, type=str, help='Zip file with data')
-    parser.add_argument('--data-path', required=False, type=str, default="./data", help='Working directory')
-    parser.add_argument('--min-val', required=False, type=int, default=-1000, help='Min value for normalization')
-    parser.add_argument('--max-val', required=False, type=int, default=1000, help='Max value for normalization')
-    parser.add_argument('--seed', required=False, type=int, help='Random seed')
+    parser.add_argument('--data-path', type=str, default="./data", help='Working directory')
+    parser.add_argument('--min-val', type=int, default=-1000, help='Min value for normalization')
+    parser.add_argument('--max-val', type=int, default=1000, help='Max value for normalization')
+    parser.add_argument('--seed', type=int, help='Random seed')
+    parser.add_argument('--log-level', default="info", choices=LOG_LEVELS.keys(), help='Logging level, default "info"')
     return vars(parser.parse_args())
 
 
