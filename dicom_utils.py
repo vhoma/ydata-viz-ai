@@ -63,7 +63,7 @@ def unzip_data(data_path):
     :return: None
     """
     all_zips = sorted(os.listdir(data_path))
-    os.chdir(data_path)
+    #os.chdir(data_path)
     for archive in all_zips:
         if archive.startswith(".") or not archive.endswith(".zip"):
             print(f"...ignore {archive}")
@@ -72,7 +72,7 @@ def unzip_data(data_path):
         print(archive)
         try:
             with ZipFile(archive_path, 'r') as zip_obj:
-                zip_obj.extractall()
+                zip_obj.extractall(data_path)
         except BadZipFile as ex:
             print(f"Skipping {archive} with exception: {ex}")
             continue

@@ -16,8 +16,8 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 from torch.utils.data import Dataset, DataLoader
 
-# from clearml import Task
-# task = Task.init(project_name="my project", task_name="my task")
+#from clearml import Task
+#task = Task.init(project_name="viz", task_name="test run")
 
 
 class Learner:
@@ -116,7 +116,7 @@ def get_args():
     parser.add_argument('--learning-rate', required=False, type=float, default=0.005, help='Min value for normalization')
     parser.add_argument('--step-size', required=False, type=int, default=15, help='Scheduler step size')
     parser.add_argument('--gamma', required=False, type=float, default=0.8, help='Gamma value for scheduler')
-    parser.add_argument('--num-epochs', required=False, type=int, default=200, help='Number of epochs')
+    parser.add_argument('--num-epochs', required=False, type=int, default=20, help='Number of epochs')
     parser.add_argument('--min-val', required=False, type=int, default=-1000, help='Min value for normalization')
     parser.add_argument('--max-val', required=False, type=int, default=1000, help='Max value for normalization')
     parser.add_argument('--seed', required=False, type=int, help='Random seed')
