@@ -86,7 +86,7 @@ def main(data_path, archive_path, min_val, max_val, log_level, seed=None):
     np.random.seed(seed)
     set_log_level(log_level)
 
-    # unzip_data(data_path, archive_path)
+    unzip_data(data_path, archive_path)
     dataset = Img3dDataSet(data_path, min_val, max_val)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
     x, y, mtrx = next(iter(dataloader))
