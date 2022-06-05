@@ -32,7 +32,7 @@ def get_device():
 
 
 class Learner:
-    def __init__(self, data_path, batch_size, num_epochs, learning_rate, step_size, gamma, min_val, max_val):
+    def __init__(self, data_path, batch_size, batch_size_val, num_epochs, learning_rate, step_size, gamma, min_val, max_val):
         self.data_path = data_path
         self.num_epochs = num_epochs
         self.batch_size = batch_size
@@ -48,7 +48,7 @@ class Learner:
         dataset_val = dl.Img3dDataSet(data_path_val, min_val, max_val)
         self.data_loader = {
             'train': DataLoader(dataset_train, batch_size=batch_size, shuffle=True),
-            'val': DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
+            'val': DataLoader(dataset_val, batch_size=batch_size_val, shuffle=True)
         }
 
         # model init
@@ -163,7 +163,8 @@ def main(data):
         gamma=data['gamma'],
         min_val=data['min_val'],
         max_val=data['max_val'],
-        batch_size=data['batch_size']
+        batch_size=data['batch_size'],
+        batch_size_val=data['batch_size_val']
     )
 
     logging.info("Start training!")
@@ -179,6 +180,7 @@ def get_args():
     parser = argparse.ArgumentParser(description=sys.argv[0])
     parser.add_argument('--data-path', required=False, type=str, default="./data100", help='Working directory')
     parser.add_argument('--batch_size', required=False, type=int, default=4, help='Batch size')
+    parser.add_argument('--batch_size_val', required=False, type=int, default=1, help='Batch size validation')
     parser.add_argument('--learning-rate', required=False, type=float, default=0.005, help='Min value for normalization')
     parser.add_argument('--step-size', required=False, type=int, default=10, help='Scheduler step size')
     parser.add_argument('--gamma', required=False, type=float, default=0.8, help='Gamma value for scheduler')
