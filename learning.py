@@ -5,10 +5,10 @@ from data_loader import LOG_LEVELS, set_log_level
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
-import copy
 import argparse
 import sys
-from scipy.ndimage import affine_transform
+import os
+from tempfile import gettempdir
 
 import torch
 from torch import nn
@@ -17,7 +17,7 @@ from torch.optim import lr_scheduler
 from torch.utils.data import Dataset, DataLoader
 
 from clearml import Task
-task = Task.init(project_name="viz", task_name="test run")
+task = Task.init(project_name="viz", task_name="run_with_validation")
 clearml_logger = task.get_logger()
 
 
@@ -41,12 +41,19 @@ class Learner:
         self.device = get_device()
         logging.info(f"device: {self.device}")
 
-        # get data loader
-        dataset = dl.Img3dDataSet(data_path, min_val, max_val)
-        self.data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        # get data loader for train and val
+        data_path_train = os.path.join(data_path, "train")
+        data_path_val = os.path.join(data_path, "val")
+        dataset_train = dl.Img3dDataSet(data_path_train, min_val, max_val)
+        dataset_val = dl.Img3dDataSet(data_path_val, min_val, max_val)
+        self.data_loader = {
+            'train': DataLoader(dataset_train, batch_size=batch_size, shuffle=True),
+            'val': DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
+        }
 
         # model init
-        model = nn_architecture.SiamAirNet()
+        #model = nn_architecture.SiamAirNet()
+        model = nn_architecture.Siam_AirNet2()
         self.model = model.to(self.device)
 
         # other training vars
@@ -54,50 +61,92 @@ class Learner:
         self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
         self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=step_size, gamma=gamma)
 
-        # get input for test run
-        #self.x, self.y, self.matrix = next(iter(self.data_loader))
+        # changing vars
+        self.current_epoch = 0
+        self.loss_history = []
+        self.epoch_loss_list = []
+        self.best_loss = np.inf
+        self.batch_num = 0
+
+    def reset_vars(self):
+        self.current_epoch = 0
+        self.loss_history = []
+        self.epoch_loss_list = []
+        self.best_loss = np.inf
+        self.batch_num = 0
+
+    def train_step(self, phase, x, y, matrix):
+        # Zero the gradients
+        self.optimizer.zero_grad()
+
+        # load to the device
+        x = x.to(self.device)
+        y = y.to(self.device)
+        matrix = matrix.to(self.device)
+
+        # run the model
+        res = self.model(x, y)
+
+        # calculate batch loss
+        loss = self.criterion(res, matrix.flatten(start_dim=1))
+
+        if phase == 'train':
+            loss.backward()
+            self.optimizer.step()
+
+        # log
+        batch_loss = loss.item() / x.shape[0]  # self.batch_size
+        self.epoch_loss_list.append(batch_loss)
+        logging.info(f"Epoch #{self.current_epoch}, phase: {phase}, batch #{self.batch_num}: Current loss {batch_loss}\n")
+        if phase == "train":
+            clearml_logger.report_scalar(
+                title="loss",
+                series=f"batch_LOSS",
+                value=batch_loss,
+                iteration=self.batch_num + self.current_epoch * len(self.data_loader[phase])
+            )
+            self.loss_history.append(loss.item())
+        self.batch_num += 1
+
+    def train_epoch(self, phase):
+        self.batch_num = 0
+        self.epoch_loss_list = []
+        if phase == "train":
+            self.model.train()
+        else:
+            self.model.eval()
+
+        # run through all data
+        for x, y, matrix in self.data_loader[phase]:
+            self.train_step(phase, x, y, matrix)
+
+        if phase == "train":
+            self.scheduler.step()
+
+        # log epoch loss
+        epoch_loss = np.array(self.epoch_loss_list).mean()
+        clearml_logger.report_scalar(
+            title="loss",
+            series=f"{phase}_epoch_LOSS",
+            value=epoch_loss,
+            iteration=self.current_epoch
+        )
+        if epoch_loss < self.best_loss:
+            torch.save(
+                self.model.state_dict(),
+                os.path.join(gettempdir(), f"best_model_{self.current_epoch}_{self.best_loss:.2f}.pt")
+            )
 
     def train(self):
-        best_loss = np.inf
-        loss_history = []
+        self.reset_vars()  # in case this is not the first time
 
         # Iterate throughout the epochs
         for epoch in range(self.num_epochs):
-            batch_num = 0
-            for x, y, matrix in self.data_loader:
-                # Zero the gradients
-                self.optimizer.zero_grad()
-
-                # load to the device
-                x = x.to(self.device)
-                y = y.to(self.device)
-                matrix = matrix.to(self.device)
-
-                # run the model
-                res = self.model(x, y)
-
-                # calculate batch loss
-                loss = self.criterion(res, matrix.flatten(start_dim=1))
-                loss.backward()
-
-                # Optimize
-                self.optimizer.step()
-                self.scheduler.step()
-                batch_loss = loss.item() / self.batch_size
-                logging.info(f"Epoch #{epoch}, batch #{batch_num}: Current loss {batch_loss}\n")
-                clearml_logger.report_scalar(
-                    title="loss",
-                    series=f"Epoch#{epoch}",
-                    value=batch_loss,
-                    iteration=batch_num
-                )
-                batch_num += 1
-                loss_history.append(loss.item())
-
-        return loss_history
+            self.current_epoch = epoch
+            for phase in ['train', 'val']:
+                self.train_epoch(phase)
 
 
-#def main(data_path, learning_rate, step_size, gamma, num_epochs, min_val, max_val, log_level, seed=None):
 def main(data):
     # set logging level
     set_log_level(data['log_level'])
@@ -118,28 +167,12 @@ def main(data):
     )
 
     logging.info("Start training!")
-    loss_history = learner.train()
+    learner.train()
     logging.info("Finished training!")
 
     # plot loss
-    plt.plot(loss_history)
+    plt.plot(learner.loss_history)
     plt.show()
-
-    # # check
-    # trained_matrix = learner.model(learner.x.to(learner.device), learner.y.to(learner.device))
-    # trained_matrix = trained_matrix.cpu().detach().numpy()
-    # trained_matrix = np.append(trained_matrix, [0, 0, 0, 1]).reshape(4, 4)
-    # logging.info(f"original matrix: \n{learner.matrix.numpy()}")
-    # logging.info(f"trained matrix: \n{trained_matrix}")
-    #
-    # x_nmp = learner.x.detach().numpy()[0].transpose(1, 2, 0)
-    # y_nmp = learner.y.detach().numpy()[0].transpose(1, 2, 0)
-    # plt.imshow(y_nmp[:, :, 10])
-    # plt.show()
-    #
-    # x_new = affine_transform(x_nmp, trained_matrix)
-    # plt.imshow(x_new[:, :, 10])
-    # plt.show()
 
 
 def get_args():
