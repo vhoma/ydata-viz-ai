@@ -48,7 +48,7 @@ class Learner:
         dataset_val = dl.Img3dDataSet(data_path_val, min_val, max_val)
         self.data_loader = {
             'train': DataLoader(dataset_train, batch_size=batch_size, shuffle=True),
-            'val': DataLoader(dataset_val, batch_size=batch_size_val, shuffle=True)
+            'val': DataLoader(dataset_val, batch_size=batch_size_val, shuffle=False)
         }
 
         # model init
@@ -131,7 +131,8 @@ class Learner:
             value=epoch_loss,
             iteration=self.current_epoch
         )
-        if epoch_loss < self.best_loss:
+        if phase == "val" and epoch_loss < self.best_loss:
+            self.best_loss = epoch_loss
             torch.save(
                 self.model.state_dict(),
                 os.path.join(gettempdir(), f"best_model_{self.current_epoch}_{self.best_loss:.2f}.pt")
