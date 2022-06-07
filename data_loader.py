@@ -21,6 +21,39 @@ LOG_LEVELS = {
 }
 
 
+def parse_patient_num(s):
+    return int(s.split('.')[0].split('_')[0].split('-')[-1])
+
+
+def split_train_val(data_path, data_path_train, data_path_val, val_ratio=0.1):
+    # create folders
+    os.makedirs(data_path_train, exist_ok=True)
+    os.makedirs(data_path_val, exist_ok=True)
+
+    # calculate num files
+    all_files = [f for f in os.listdir(data_path) if f.startswith("CQ") and f.endswith(".npz")]
+    all_files.sort()
+    num_files = len(all_files)
+    num_val = int(num_files * val_ratio)
+    num_train = num_files - num_val
+    print(f"Num files: {num_files}, num_train: {num_train}, num_val: {num_val} ")
+
+    # move files
+    train_files = []
+    i = 0
+    for f in all_files:
+        if i < num_train:  # first take files for train
+            os.rename(os.path.join(data_path, f), os.path.join(data_path_train, f))
+            train_files.append(parse_patient_num(f))
+        else:  # then move files to val
+            if parse_patient_num(f) in train_files:
+                print(f"{f} already in train!")
+                os.rename(os.path.join(data_path, f), os.path.join(data_path_train, f))
+            else:
+                os.rename(os.path.join(data_path, f), os.path.join(data_path_val, f))
+        i += 1
+
+
 def unzip_data(data_path, archive_path):
     print(f"Unzip '{archive_path}'...")
     with ZipFile(archive_path, 'r') as zip_obj:
@@ -86,7 +119,7 @@ def main(data_path, archive_path, min_val, max_val, log_level, seed=None):
     np.random.seed(seed)
     set_log_level(log_level)
 
-    # unzip_data(data_path, archive_path)
+    unzip_data(data_path, archive_path)
     dataset = Img3dDataSet(data_path, min_val, max_val)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
     x, y, mtrx = next(iter(dataloader))
