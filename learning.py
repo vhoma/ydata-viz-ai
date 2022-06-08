@@ -17,7 +17,7 @@ from torch.optim import lr_scheduler
 from torch.utils.data import Dataset, DataLoader
 
 from clearml import Task
-task = Task.init(project_name="viz", task_name="run_with_validation")
+task = Task.init(project_name="viz", task_name="run_with_validation fixed")
 clearml_logger = task.get_logger()
 
 
