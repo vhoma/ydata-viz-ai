@@ -17,7 +17,7 @@ from torch.optim import lr_scheduler
 from torch.utils.data import Dataset, DataLoader
 
 from clearml import Task
-task = Task.init(project_name="viz", task_name="run_with_validation fixed")
+task = Task.init(project_name="viz", task_name="test local run")
 clearml_logger = task.get_logger()
 
 
@@ -121,7 +121,7 @@ class Learner:
             clearml_logger.report_scalar(
                 title="learning_rate",
                 series=f"learning_rate",
-                value=self.scheduler.get_last_lr(),
+                value=self.scheduler.get_last_lr()[0],
                 iteration=self.current_epoch
             )
 
