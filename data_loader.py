@@ -9,6 +9,7 @@ from scipy.ndimage import affine_transform
 import Affine3D as affine
 import torch
 from torch.utils.data import Dataset, DataLoader
+from kornia.geometry.transform import warp_affine3d
 
 
 LOG_LEVELS = {
@@ -19,6 +20,16 @@ LOG_LEVELS = {
     'info': logging.INFO,
     'debug': logging.DEBUG
 }
+
+
+def get_device():
+    if torch.cuda.is_available():
+        device_name = "cuda:0"
+    # elif torch.backends.mps.is_available():
+    #     device_name = "mps"
+    else:
+        device_name = "cpu"
+    return torch.device(device_name)
 
 
 def parse_patient_num(s):
@@ -64,13 +75,15 @@ def normalize(img, min_val, max_val):
     return (img - min_val) / (max_val - min_val)
 
 
-def transform(img, angle):
-    m = affine.Affine3dRotateCenterMatrix(angle, img.shape, axis=2)
-    return affine_transform(img, m), m
+def transform_img(img, angle, shape, device):
+    m = affine.Affine3dRotateCenterMatrix(angle, shape, axis=2)
+    m = torch.from_numpy(m[:-1, :]).to(device)
+    new_img = warp_affine3d(torch.unsqueeze(img, dim=0).unsqueeze(dim=0), m.unsqueeze(dim=0), img.shape)
+    return new_img[0][0], m
 
 
 class Img3dDataSet(Dataset):
-    def __init__(self, data_path, min_val, max_val):
+    def __init__(self, data_path, min_val, max_val, device):
         self.d_path = data_path
         self.min_val = min_val
         self.max_val = max_val
@@ -78,29 +91,28 @@ class Img3dDataSet(Dataset):
         self.target_transform = None
         names = [f for f in os.listdir(data_path) if f.endswith(".npz")]
         self.names_array = np.sort(np.array(names))
+        self.device = device
 
     def __getitem__(self, idx):
         name = self.names_array[idx]
         img3d = np.load(os.path.join(self.d_path, name))['I']
+        shape_before_permute = img3d.shape   # need this because torch uses opposite dimentions order
+        img3d = torch.from_numpy(img3d).float().permute(2, 0, 1).to(self.device)
         img3d = normalize(img3d, self.min_val, self.max_val)
 
         # transform original image twice
         alpha1 = np.random.randint(-45, 45)
-        t1, m1 = transform(img3d, alpha1)
+        t1, m1 = transform_img(img3d, alpha1, shape_before_permute, self.device)
         alpha2 = np.random.randint(-45, 45)
-        t2, m2 = transform(img3d, alpha2)
+        t2, m2 = transform_img(img3d, alpha2, shape_before_permute, self.device)
         logging.debug("...transformed with angles: {} {}".format(alpha1, alpha2))
 
         # find transform matrix from 1st to 2nd
-        matrix = affine.Affine3dRotateCenterMatrix(alpha2 - alpha1, img3d.shape, axis=2)
-
-        # transpose images and remove last row from the matrix
-        t1 = t1.transpose(2, 0, 1)
-        t2 = t2.transpose(2, 0, 1)
-        matrix = matrix[:3, :]
+        matrix = affine.Affine3dRotateCenterMatrix(alpha2 - alpha1, shape_before_permute, axis=2)
+        matrix = torch.from_numpy(matrix[:3, :]).to(self.device)
 
         # convert to torch
-        return torch.from_numpy(t1).float(), torch.from_numpy(t2).float(), matrix
+        return t1, t2, matrix
 
     def __len__(self):
         return len(self.names_array)
@@ -119,8 +131,8 @@ def main(data_path, archive_path, min_val, max_val, log_level, seed=None):
     np.random.seed(seed)
     set_log_level(log_level)
 
-    unzip_data(data_path, archive_path)
-    dataset = Img3dDataSet(data_path, min_val, max_val)
+    # unzip_data(data_path, archive_path)
+    dataset = Img3dDataSet(data_path, min_val, max_val, get_device())
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
     x, y, mtrx = next(iter(dataloader))
     logging.info(f"Transformation matrix: {mtrx}")
@@ -133,7 +145,7 @@ def main(data_path, archive_path, min_val, max_val, log_level, seed=None):
 def get_args():
     parser = argparse.ArgumentParser(description=sys.argv[0])
     parser.add_argument('--archive-path', required=True, type=str, help='Zip file with data')
-    parser.add_argument('--data-path', type=str, default="./data", help='Working directory')
+    parser.add_argument('--data-path', type=str, default="./data/val", help='Working directory')
     parser.add_argument('--min-val', type=int, default=-1000, help='Min value for normalization')
     parser.add_argument('--max-val', type=int, default=1000, help='Max value for normalization')
     parser.add_argument('--seed', type=int, help='Random seed')

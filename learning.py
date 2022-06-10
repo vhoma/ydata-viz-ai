@@ -45,8 +45,8 @@ class Learner:
         # get data loader for train and val
         data_path_train = os.path.join(data_path, "train")
         data_path_val = os.path.join(data_path, "val")
-        dataset_train = dl.Img3dDataSet(data_path_train, min_val, max_val)
-        dataset_val = dl.Img3dDataSet(data_path_val, min_val, max_val)
+        dataset_train = dl.Img3dDataSet(data_path_train, min_val, max_val, self.device)
+        dataset_val = dl.Img3dDataSet(data_path_val, min_val, max_val, self.device)
         self.data_loader = {
             'train': DataLoader(dataset_train, batch_size=batch_size, shuffle=True),
             'val': DataLoader(dataset_val, batch_size=batch_size_val, shuffle=False)
@@ -86,9 +86,9 @@ class Learner:
         self.optimizer.zero_grad()
 
         # load to the device
-        x = x.to(self.device)
-        y = y.to(self.device)
-        matrix = matrix.to(self.device)
+        # x = x.to(self.device)
+        # y = y.to(self.device)
+        # matrix = matrix.to(self.device)
 
         # run the model
         res = self.model(x, y)
