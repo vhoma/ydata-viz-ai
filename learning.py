@@ -17,7 +17,7 @@ from torch.optim import lr_scheduler
 from torch.utils.data import Dataset, DataLoader
 
 from clearml import Task
-task = Task.init(project_name="viz", task_name="run_with_validation fixed")
+task = Task.init(project_name="viz", task_name="test local run")
 clearml_logger = task.get_logger()
 
 
@@ -32,7 +32,8 @@ def get_device():
 
 
 class Learner:
-    def __init__(self, data_path, batch_size, batch_size_val, num_epochs, learning_rate, step_size, gamma, min_val, max_val):
+    def __init__(self, data_path, batch_size, batch_size_val, num_epochs, learning_rate, step_size, gamma,
+                 min_val, max_val, model_state_file):
         self.data_path = data_path
         self.num_epochs = num_epochs
         self.batch_size = batch_size
@@ -44,8 +45,8 @@ class Learner:
         # get data loader for train and val
         data_path_train = os.path.join(data_path, "train")
         data_path_val = os.path.join(data_path, "val")
-        dataset_train = dl.Img3dDataSet(data_path_train, min_val, max_val)
-        dataset_val = dl.Img3dDataSet(data_path_val, min_val, max_val)
+        dataset_train = dl.Img3dDataSet(data_path_train, min_val, max_val, self.device)
+        dataset_val = dl.Img3dDataSet(data_path_val, min_val, max_val, self.device)
         self.data_loader = {
             'train': DataLoader(dataset_train, batch_size=batch_size, shuffle=True),
             'val': DataLoader(dataset_val, batch_size=batch_size_val, shuffle=False)
@@ -54,6 +55,11 @@ class Learner:
         # model init
         #model = nn_architecture.SiamAirNet()
         model = nn_architecture.Siam_AirNet2()
+
+        # load model state if needed
+        if model_state_file:
+            model.load_state_dict(torch.load(model_state_file, map_location=torch.device('cpu')))
+
         self.model = model.to(self.device)
 
         # other training vars
@@ -80,9 +86,9 @@ class Learner:
         self.optimizer.zero_grad()
 
         # load to the device
-        x = x.to(self.device)
-        y = y.to(self.device)
-        matrix = matrix.to(self.device)
+        # x = x.to(self.device)
+        # y = y.to(self.device)
+        # matrix = matrix.to(self.device)
 
         # run the model
         res = self.model(x, y)
@@ -109,6 +115,16 @@ class Learner:
         self.batch_num += 1
 
     def train_epoch(self, phase):
+        if phase == "train":
+            # save learning rate
+            logging.info(f"Learning rate: {self.scheduler.get_last_lr()}")
+            clearml_logger.report_scalar(
+                title="learning_rate",
+                series=f"learning_rate",
+                value=self.scheduler.get_last_lr()[0],
+                iteration=self.current_epoch
+            )
+
         self.batch_num = 0
         self.epoch_loss_list = []
         if phase == "train":
@@ -165,7 +181,8 @@ def main(data):
         min_val=data['min_val'],
         max_val=data['max_val'],
         batch_size=data['batch_size'],
-        batch_size_val=data['batch_size_val']
+        batch_size_val=data['batch_size_val'],
+        model_state_file=data['model_state_file']
     )
 
     logging.info("Start training!")
@@ -190,6 +207,7 @@ def get_args():
     parser.add_argument('--max-val', required=False, type=int, default=1000, help='Max value for normalization')
     parser.add_argument('--seed', required=False, type=int, help='Random seed')
     parser.add_argument('--log-level', default="info", choices=LOG_LEVELS.keys(), help='Logging level, default "info"')
+    parser.add_argument('--model-state-file', required=False, default=None, help='Path to .pt file with model weights.')
     return vars(parser.parse_args())
 
 
