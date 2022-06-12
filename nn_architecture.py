@@ -158,16 +158,16 @@ class Siam_AirNet2(nn.Module):
 
         self.regression = nn.Sequential(
             nn.Linear(2 * 2 * 2 * 512 * 2, 1024),  # check the final dimensions
-            #            nn.BatchNorm1d(1024),
+            nn.BatchNorm1d(1024),
             nn.ReLU(inplace=True),
             nn.Linear(1024, 512),
-            #           nn.BatchNorm1d(512),
+            nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
             nn.Linear(512, 128),
-            #          nn.BatchNorm1d(128),
+            nn.BatchNorm1d(128),
             nn.ReLU(inplace=True),
             nn.Linear(128, 64),
-            #         nn.BatchNorm1d(64),
+            nn.BatchNorm1d(64),
             nn.ReLU(inplace=True),
             nn.Linear(64, 12))
 
