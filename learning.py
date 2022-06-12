@@ -18,8 +18,8 @@ from torch.optim import lr_scheduler
 from torch.utils.data import Dataset, DataLoader
 
 from clearml import Task
-Task.set_offline(offline_mode=True)
-task = Task.init(project_name="viz", task_name="test local angle scheduler")
+#Task.set_offline(offline_mode=True)
+task = Task.init(project_name="viz", task_name="test local all_new_features")
 clearml_logger = task.get_logger()
 
 
@@ -167,12 +167,6 @@ class Learner:
 
         # log epoch loss
         epoch_loss = np.array(self.epoch_loss_list).mean()
-        clearml_logger.report_scalar(
-            title="loss",
-            series=f"{phase}_epoch_LOSS",
-            value=epoch_loss,
-            iteration=self.current_epoch
-        )
         if phase == "val" and self.is_fixed_validation_epoch():
             if epoch_loss < self.best_loss:
                 self.best_loss = epoch_loss
@@ -187,6 +181,14 @@ class Learner:
                 value=epoch_loss,
                 iteration=self.current_epoch
             )
+        else:
+            clearml_logger.report_scalar(
+                title="loss",
+                series=f"{phase}_epoch_LOSS",
+                value=epoch_loss,
+                iteration=self.current_epoch
+            )
+
 
     def train(self):
         self.reset_vars()  # in case this is not the first time
@@ -239,8 +241,6 @@ def get_args():
     parser.add_argument('--batch_size', required=False, type=int, default=4, help='Batch size')
     parser.add_argument('--batch_size_val', required=False, type=int, default=1, help='Batch size validation')
     parser.add_argument('--learning-rate', required=False, type=float, default=0.005, help='Min value for normalization')
-    parser.add_argument('--step-size', required=False, type=int, default=10, help='Scheduler step size')
-    parser.add_argument('--gamma', required=False, type=float, default=0.8, help='Gamma value for scheduler')
     parser.add_argument('--num-epochs', required=False, type=int, default=1, help='Number of epochs')
     parser.add_argument('--min-val', required=False, type=int, default=-1000, help='Min value for normalization')
     parser.add_argument('--max-val', required=False, type=int, default=1000, help='Max value for normalization')
