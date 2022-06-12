@@ -19,7 +19,7 @@ from torch.utils.data import Dataset, DataLoader
 
 from clearml import Task
 Task.set_offline(offline_mode=True)
-task = Task.init(project_name="viz", task_name="test local fixed architecture")
+task = Task.init(project_name="viz", task_name="test local angle scheduler")
 clearml_logger = task.get_logger()
 
 
@@ -34,7 +34,7 @@ def get_device():
 
 
 class Learner:
-    def __init__(self, data_path, batch_size, batch_size_val, num_epochs, learning_rate, step_size, gamma,
+    def __init__(self, data_path, batch_size, batch_size_val, num_epochs, learning_rate, scheduler_input,
                  min_val, max_val, model_state_file, transform_angle_schedule):
         self.data_path = data_path
         self.num_epochs = num_epochs
@@ -72,7 +72,8 @@ class Learner:
         # other training vars
         self.criterion = nn.MSELoss(reduction='sum')
         self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-        self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=step_size, gamma=gamma)
+        #self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=step_size, gamma=gamma)
+        self.scheduler = eval(scheduler_input)
 
         # changing vars
         self.current_epoch = 0
@@ -194,14 +195,13 @@ def main(data):
         data_path=data['data_path'],
         num_epochs=data['num_epochs'],
         learning_rate=data['learning_rate'],
-        step_size=data['step_size'],
-        gamma=data['gamma'],
         min_val=data['min_val'],
         max_val=data['max_val'],
         batch_size=data['batch_size'],
         batch_size_val=data['batch_size_val'],
         model_state_file=data['model_state_file'],
-        transform_angle_schedule=data['transform_angle_schedule']
+        transform_angle_schedule=data['transform_angle_schedule'],
+        scheduler_input=data['scheduler_input']
     )
 
     logging.info("Start training!")
@@ -233,6 +233,13 @@ def get_args():
         default="{\"0\"': 45}",
         help='JSON dict where key is epoch and value is transform angle limit change on that epoch.'
     )
+    parser.add_argument(
+        '--scheduler-input',
+        required=False,
+        default="lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.9)",
+        help='Code to create LR schedule. SORRY MOM, i know this is very insecure'
+    )
+    # scheduler_input
     return vars(parser.parse_args())
 
 
