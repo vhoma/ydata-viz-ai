@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import argparse
 import sys
 import os
+import json
 from tempfile import gettempdir
 
 import torch
@@ -17,7 +18,8 @@ from torch.optim import lr_scheduler
 from torch.utils.data import Dataset, DataLoader
 
 from clearml import Task
-task = Task.init(project_name="viz", task_name="test local run")
+Task.set_offline(offline_mode=True)
+task = Task.init(project_name="viz", task_name="test local fixed architecture")
 clearml_logger = task.get_logger()
 
 
@@ -33,10 +35,12 @@ def get_device():
 
 class Learner:
     def __init__(self, data_path, batch_size, batch_size_val, num_epochs, learning_rate, step_size, gamma,
-                 min_val, max_val, model_state_file):
+                 min_val, max_val, model_state_file, transform_angle_schedule):
         self.data_path = data_path
         self.num_epochs = num_epochs
         self.batch_size = batch_size
+        print(transform_angle_schedule)  # debug
+        self.transform_angle_schedule = json.loads(transform_angle_schedule)
 
         # connect to GPU
         self.device = get_device()
@@ -45,11 +49,14 @@ class Learner:
         # get data loader for train and val
         data_path_train = os.path.join(data_path, "train")
         data_path_val = os.path.join(data_path, "val")
-        dataset_train = dl.Img3dDataSet(data_path_train, min_val, max_val, self.device)
-        dataset_val = dl.Img3dDataSet(data_path_val, min_val, max_val, self.device)
+        default_angle_limit = max(self.transform_angle_schedule.values())
+        self.dataset_train = dl.Img3dDataSet(data_path_train, min_val, max_val, self.device,
+                                             max_transform_angle=default_angle_limit)
+        self.dataset_val = dl.Img3dDataSet(data_path_val, min_val, max_val, self.device,
+                                           max_transform_angle=default_angle_limit)
         self.data_loader = {
-            'train': DataLoader(dataset_train, batch_size=batch_size, shuffle=True),
-            'val': DataLoader(dataset_val, batch_size=batch_size_val, shuffle=False)
+            'train': DataLoader(self.dataset_train, batch_size=batch_size, shuffle=True),
+            'val': DataLoader(self.dataset_val, batch_size=batch_size_val, shuffle=False)
         }
 
         # model init
@@ -125,6 +132,17 @@ class Learner:
                 iteration=self.current_epoch
             )
 
+            # set new transform angle limit if needed
+            scheduled_transform_angle_limit = self.transform_angle_schedule.get(str(self.current_epoch))
+            if scheduled_transform_angle_limit:
+                self.dataset_train.max_transform_angle = scheduled_transform_angle_limit
+            clearml_logger.report_scalar(
+                title="transform_angle_limit",
+                series=f"angle_limit",
+                value=self.dataset_train.max_transform_angle,
+                iteration=self.current_epoch
+            )
+
         self.batch_num = 0
         self.epoch_loss_list = []
         if phase == "train":
@@ -182,7 +200,8 @@ def main(data):
         max_val=data['max_val'],
         batch_size=data['batch_size'],
         batch_size_val=data['batch_size_val'],
-        model_state_file=data['model_state_file']
+        model_state_file=data['model_state_file'],
+        transform_angle_schedule=data['transform_angle_schedule']
     )
 
     logging.info("Start training!")
@@ -208,6 +227,12 @@ def get_args():
     parser.add_argument('--seed', required=False, type=int, help='Random seed')
     parser.add_argument('--log-level', default="info", choices=LOG_LEVELS.keys(), help='Logging level, default "info"')
     parser.add_argument('--model-state-file', required=False, default=None, help='Path to .pt file with model weights.')
+    parser.add_argument(
+        '--transform-angle-schedule',
+        required=False,
+        default="{\"0\"': 45}",
+        help='JSON dict where key is epoch and value is transform angle limit change on that epoch.'
+    )
     return vars(parser.parse_args())
 
 

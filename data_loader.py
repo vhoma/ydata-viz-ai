@@ -83,7 +83,7 @@ def transform_img(img, angle, shape, device):
 
 
 class Img3dDataSet(Dataset):
-    def __init__(self, data_path, min_val, max_val, device):
+    def __init__(self, data_path, min_val, max_val, device, max_transform_angle=45):
         self.d_path = data_path
         self.min_val = min_val
         self.max_val = max_val
@@ -92,6 +92,7 @@ class Img3dDataSet(Dataset):
         names = [f for f in os.listdir(data_path) if f.endswith(".npz")]
         self.names_array = np.sort(np.array(names))
         self.device = device
+        self.max_transform_angle = max_transform_angle
 
     def __getitem__(self, idx):
         name = self.names_array[idx]
@@ -101,9 +102,9 @@ class Img3dDataSet(Dataset):
         img3d = normalize(img3d, self.min_val, self.max_val)
 
         # transform original image twice
-        alpha1 = np.random.randint(-45, 45)
+        alpha1 = np.random.uniform(-self.max_transform_angle, self.max_transform_angle)
         t1, m1 = transform_img(img3d, alpha1, shape_before_permute, self.device)
-        alpha2 = np.random.randint(-45, 45)
+        alpha2 = np.random.uniform(-self.max_transform_angle, self.max_transform_angle)
         t2, m2 = transform_img(img3d, alpha2, shape_before_permute, self.device)
         logging.debug("...transformed with angles: {} {}".format(alpha1, alpha2))
 
