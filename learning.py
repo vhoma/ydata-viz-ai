@@ -35,12 +35,15 @@ def get_device():
 
 class Learner:
     def __init__(self, data_path, batch_size, batch_size_val, num_epochs, learning_rate, scheduler_input,
-                 min_val, max_val, model_state_file, transform_angle_schedule):
+                 min_val, max_val, model_state_file, transform_angle_schedule,
+                 best_loss_threshold, nonrandom_val_step):
         self.data_path = data_path
         self.num_epochs = num_epochs
         self.batch_size = batch_size
         print(transform_angle_schedule)  # debug
         self.transform_angle_schedule = json.loads(transform_angle_schedule)
+        self.best_loss_threshold = best_loss_threshold
+        self.nonrandom_val_step = nonrandom_val_step
 
         # connect to GPU
         self.device = get_device()
@@ -114,7 +117,7 @@ class Learner:
         logging.info(f"Epoch #{self.current_epoch}, phase: {phase}, batch #{self.batch_num}: Current loss {batch_loss}\n")
         if phase == "train":
             clearml_logger.report_scalar(
-                title="loss",
+                title="batch_loss",
                 series=f"batch_LOSS",
                 value=batch_loss,
                 iteration=self.batch_num + self.current_epoch * len(self.data_loader[phase])
@@ -152,8 +155,12 @@ class Learner:
             self.model.eval()
 
         # run through all data
-        for x, y, matrix in self.data_loader[phase]:
+        if phase == "val" and self.is_fixed_validation_epoch():
+            # once in a while will run an epoch with this flag on
+            self.dataset_val.use_fixed_angles = True
+        for x, y, matrix in self.data_loader[phase]:   # iterate through data loader here
             self.train_step(phase, x, y, matrix)
+        self.dataset_val.use_fixed_angles = False   # always switch off
 
         if phase == "train":
             self.scheduler.step()
@@ -166,11 +173,19 @@ class Learner:
             value=epoch_loss,
             iteration=self.current_epoch
         )
-        if phase == "val" and epoch_loss < self.best_loss:
-            self.best_loss = epoch_loss
-            torch.save(
-                self.model.state_dict(),
-                os.path.join(gettempdir(), f"best_model_{self.current_epoch}_{self.best_loss:.2f}.pt")
+        if phase == "val" and self.is_fixed_validation_epoch():
+            if epoch_loss < self.best_loss:
+                self.best_loss = epoch_loss
+                if self.best_loss < self.best_loss_threshold:
+                    torch.save(
+                        self.model.state_dict(),
+                        os.path.join(gettempdir(), f"best_model_{self.current_epoch}_{self.best_loss:.2f}.pt")
+                    )
+            clearml_logger.report_scalar(
+                title="loss",
+                series=f"val_fixed_LOSS",
+                value=epoch_loss,
+                iteration=self.current_epoch
             )
 
     def train(self):
@@ -181,6 +196,9 @@ class Learner:
             self.current_epoch = epoch
             for phase in ['train', 'val']:
                 self.train_epoch(phase)
+
+    def is_fixed_validation_epoch(self):
+        return self.current_epoch % self.nonrandom_val_step == 0
 
 
 def main(data):
@@ -201,7 +219,9 @@ def main(data):
         batch_size_val=data['batch_size_val'],
         model_state_file=data['model_state_file'],
         transform_angle_schedule=data['transform_angle_schedule'],
-        scheduler_input=data['scheduler_input']
+        scheduler_input=data['scheduler_input'],
+        best_loss_threshold=data['best_loss_threshold'],
+        nonrandom_val_step=data['nonrandom_val_step']
     )
 
     logging.info("Start training!")
@@ -238,6 +258,18 @@ def get_args():
         required=False,
         default="lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.9)",
         help='Code to create LR schedule. SORRY MOM, i know this is very insecure'
+    ),
+    parser.add_argument(
+        '--best-loss-threshold',
+        required=False,
+        default=20,
+        help='Model state will be saved only if validation loss is lower then this threshold'
+    ),
+    parser.add_argument(
+        '--nonrandom-val-step',
+        required=False,
+        default=50,
+        help='Once in <step> epochs we will run validation phase on pre generated transform angles, for consistent validation.'
     )
     # scheduler_input
     return vars(parser.parse_args())
