@@ -36,7 +36,7 @@ def get_device():
 class Learner:
     def __init__(self, data_path, batch_size, batch_size_val, num_epochs, learning_rate, scheduler_input,
                  min_val, max_val, model_state_file, transform_angle_schedule,
-                 best_loss_threshold, nonrandom_val_step):
+                 best_loss_threshold, nonrandom_val_step, batchnorm_on):
         self.data_path = data_path
         self.num_epochs = num_epochs
         self.batch_size = batch_size
@@ -64,7 +64,7 @@ class Learner:
 
         # model init
         #model = nn_architecture.SiamAirNet()
-        model = nn_architecture.Siam_AirNet2()
+        model = nn_architecture.Siam_AirNet2(batchnorm_on=batchnorm_on)
 
         # load model state if needed
         if model_state_file:
@@ -223,7 +223,8 @@ def main(data):
         transform_angle_schedule=data['transform_angle_schedule'],
         scheduler_input=data['scheduler_input'],
         best_loss_threshold=data['best_loss_threshold'],
-        nonrandom_val_step=data['nonrandom_val_step']
+        nonrandom_val_step=data['nonrandom_val_step'],
+        batchnorm_on=data['batchnorm_on']
     )
 
     logging.info("Start training!")
@@ -270,6 +271,12 @@ def get_args():
         required=False,
         default=50,
         help='Once in <step> epochs we will run validation phase on pre generated transform angles, for consistent validation.'
+    ),
+    parser.add_argument(
+        '--batchnorm-on',
+        required=False,
+        default=True,
+        help='Toggle batch normalization on regression layers.'
     )
     # scheduler_input
     return vars(parser.parse_args())
