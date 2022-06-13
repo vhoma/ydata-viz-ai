@@ -19,7 +19,7 @@ from torch.utils.data import Dataset, DataLoader
 
 from clearml import Task
 #Task.set_offline(offline_mode=True)
-task = Task.init(project_name="viz", task_name="test local all_new_features")
+task = Task.init(project_name="viz", task_name="test local toggle batch norm")
 clearml_logger = task.get_logger()
 
 
@@ -210,6 +210,9 @@ def main(data):
     # set random seed
     np.random.seed(data.get('seed', None))
 
+    # parse boolean args
+    batchnorm_on = not("false" in data['batchnorm_on'].lower())
+
     # train
     learner = Learner(
         data_path=data['data_path'],
@@ -224,7 +227,7 @@ def main(data):
         scheduler_input=data['scheduler_input'],
         best_loss_threshold=data['best_loss_threshold'],
         nonrandom_val_step=data['nonrandom_val_step'],
-        batchnorm_on=data['batchnorm_on']
+        batchnorm_on=batchnorm_on
     )
 
     logging.info("Start training!")
@@ -275,7 +278,7 @@ def get_args():
     parser.add_argument(
         '--batchnorm-on',
         required=False,
-        default=True,
+        default="true",
         help='Toggle batch normalization on regression layers.'
     )
     # scheduler_input

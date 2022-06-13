@@ -157,6 +157,7 @@ class Siam_AirNet2(nn.Module):
             self.dense3D.add_module('trans3D%d' % (i + 1), trans)
 
         if batchnorm_on:
+            logging.info("Batch normalization is ON")
             self.regression = nn.Sequential(
                 nn.Linear(2 * 2 * 2 * 512 * 2, 1024),  # check the final dimensions
                 nn.BatchNorm1d(1024),
@@ -172,6 +173,7 @@ class Siam_AirNet2(nn.Module):
                 nn.ReLU(inplace=True),
                 nn.Linear(64, 12))
         else:
+            logging.info("Batch normalization is OFF")
             self.regression = nn.Sequential(
                 nn.Linear(2 * 2 * 2 * 512 * 2, 1024),  # check the final dimensions
                 nn.ReLU(inplace=True),
