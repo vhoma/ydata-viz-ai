@@ -167,6 +167,7 @@ class Learner:
 
         # log epoch loss
         epoch_loss = np.array(self.epoch_loss_list).mean()
+        logging.info(f"Epoch #{self.current_epoch}, phase: {phase}, Epoch loss {epoch_loss}\n")
         if phase == "val" and self.is_fixed_validation_epoch():
             if epoch_loss < self.best_loss:
                 self.best_loss = epoch_loss
