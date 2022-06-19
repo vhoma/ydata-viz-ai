@@ -126,7 +126,7 @@ class Transition_Layer3d(nn.Module):
 
 class Siam_AirNet2(nn.Module):
     def __init__(self, growthRate=8, num_init_features=8, bn_size=1, block_config2D=(1, 2, 4),
-                 block_config3D=(8, 16, 32)):
+                 block_config3D=(8, 16, 32), batchnorm_on=True):
         super(Siam_AirNet2, self).__init__()
         self.flatten = nn.Flatten()
 
@@ -156,20 +156,34 @@ class Siam_AirNet2(nn.Module):
             trans = Transition_Layer3d(inChannels + num_layers * growthRate, inChannels + num_layers * growthRate)
             self.dense3D.add_module('trans3D%d' % (i + 1), trans)
 
-        self.regression = nn.Sequential(
-            nn.Linear(2 * 2 * 2 * 512 * 2, 1024),  # check the final dimensions
-            #            nn.BatchNorm1d(1024),
-            nn.ReLU(inplace=True),
-            nn.Linear(1024, 512),
-            #           nn.BatchNorm1d(512),
-            nn.ReLU(inplace=True),
-            nn.Linear(512, 128),
-            #          nn.BatchNorm1d(128),
-            nn.ReLU(inplace=True),
-            nn.Linear(128, 64),
-            #         nn.BatchNorm1d(64),
-            nn.ReLU(inplace=True),
-            nn.Linear(64, 12))
+        if batchnorm_on:
+            logging.info("Batch normalization is ON")
+            self.regression = nn.Sequential(
+                nn.Linear(2 * 2 * 2 * 512 * 2, 1024),  # check the final dimensions
+                nn.BatchNorm1d(1024),
+                nn.ReLU(inplace=True),
+                nn.Linear(1024, 512),
+                nn.BatchNorm1d(512),
+                nn.ReLU(inplace=True),
+                nn.Linear(512, 128),
+                nn.BatchNorm1d(128),
+                nn.ReLU(inplace=True),
+                nn.Linear(128, 64),
+                nn.BatchNorm1d(64),
+                nn.ReLU(inplace=True),
+                nn.Linear(64, 12))
+        else:
+            logging.info("Batch normalization is OFF")
+            self.regression = nn.Sequential(
+                nn.Linear(2 * 2 * 2 * 512 * 2, 1024),  # check the final dimensions
+                nn.ReLU(inplace=True),
+                nn.Linear(1024, 512),
+                nn.ReLU(inplace=True),
+                nn.Linear(512, 128),
+                nn.ReLU(inplace=True),
+                nn.Linear(128, 64),
+                nn.ReLU(inplace=True),
+                nn.Linear(64, 12))
 
     def _make_dense2D(self, inChannels, growthRate, nDenseBlocks):
         layers = []

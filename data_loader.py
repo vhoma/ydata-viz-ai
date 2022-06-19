@@ -83,7 +83,7 @@ def transform_img(img, angle, shape, device):
 
 
 class Img3dDataSet(Dataset):
-    def __init__(self, data_path, min_val, max_val, device):
+    def __init__(self, data_path, min_val, max_val, device, max_transform_angle=45):
         self.d_path = data_path
         self.min_val = min_val
         self.max_val = max_val
@@ -93,6 +93,13 @@ class Img3dDataSet(Dataset):
         self.names_array = np.sort(np.array(names))
         self.device = device
 
+        # this can be updated from outside to generate from different range
+        self.max_transform_angle = max_transform_angle
+
+        # generate fixed to be able to validate on consistent dataset
+        self.fixed_angles = self.generate_fixed_angles()
+        self.use_fixed_angles = False   # this flag can be updated outside
+
     def __getitem__(self, idx):
         name = self.names_array[idx]
         img3d = np.load(os.path.join(self.d_path, name))['I']
@@ -101,9 +108,12 @@ class Img3dDataSet(Dataset):
         img3d = normalize(img3d, self.min_val, self.max_val)
 
         # transform original image twice
-        alpha1 = np.random.randint(-45, 45)
+        if self.use_fixed_angles:
+            alpha1, alpha2 = self.fixed_angles[idx]
+        else:
+            alpha1 = np.random.uniform(-self.max_transform_angle, self.max_transform_angle)
+            alpha2 = np.random.uniform(-self.max_transform_angle, self.max_transform_angle)
         t1, m1 = transform_img(img3d, alpha1, shape_before_permute, self.device)
-        alpha2 = np.random.randint(-45, 45)
         t2, m2 = transform_img(img3d, alpha2, shape_before_permute, self.device)
         logging.debug("...transformed with angles: {} {}".format(alpha1, alpha2))
 
@@ -116,6 +126,15 @@ class Img3dDataSet(Dataset):
 
     def __len__(self):
         return len(self.names_array)
+
+    def generate_fixed_angles(self):
+        res = []
+        for i in range(self.__len__()):
+            alpha1 = np.random.uniform(-self.max_transform_angle, self.max_transform_angle)
+            alpha2 = np.random.uniform(-self.max_transform_angle, self.max_transform_angle)
+            res.append((alpha1, alpha2))
+        logging.info(f"Fixed transform angles:\n{res}")
+        return res
 
 
 def set_log_level(log_level):
