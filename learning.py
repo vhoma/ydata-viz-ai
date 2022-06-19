@@ -76,7 +76,7 @@ class Learner:
             model.load_state_dict(torch.load(model_state_file, map_location=torch.device('cpu')))
 
         self.model = model.to(self.device)
-        self.loss_weights.to(self.device)
+        self.loss_weights = self.loss_weights.to(self.device)
 
         # other training vars
         #self.criterion = nn.MSELoss(reduction='sum')
