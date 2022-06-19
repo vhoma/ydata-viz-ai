@@ -18,7 +18,7 @@ from torch.optim import lr_scheduler
 from torch.utils.data import Dataset, DataLoader
 
 from clearml import Task
-#Task.set_offline(offline_mode=True)
+Task.set_offline(offline_mode=True)
 task = Task.init(project_name="viz", task_name="test local toggle batch norm")
 clearml_logger = task.get_logger()
 
@@ -33,10 +33,14 @@ def get_device():
     return torch.device(device_name)
 
 
+def weighted_mse_loss(result, target, weight):
+    return ((weight * (result - target)) ** 2).sum()
+
+
 class Learner:
     def __init__(self, data_path, batch_size, batch_size_val, num_epochs, learning_rate, scheduler_input,
                  min_val, max_val, model_state_file, transform_angle_schedule,
-                 best_loss_threshold, nonrandom_val_step, batchnorm_on):
+                 best_loss_threshold, nonrandom_val_step, batchnorm_on, loss_weights):
         self.data_path = data_path
         self.num_epochs = num_epochs
         self.batch_size = batch_size
@@ -44,6 +48,7 @@ class Learner:
         self.transform_angle_schedule = json.loads(transform_angle_schedule)
         self.best_loss_threshold = best_loss_threshold
         self.nonrandom_val_step = nonrandom_val_step
+        self.loss_weights = torch.Tensor(json.loads(loss_weights))
 
         # connect to GPU
         self.device = get_device()
@@ -71,9 +76,12 @@ class Learner:
             model.load_state_dict(torch.load(model_state_file, map_location=torch.device('cpu')))
 
         self.model = model.to(self.device)
+        self.loss_weights.to(self.device)
 
         # other training vars
-        self.criterion = nn.MSELoss(reduction='sum')
+        #self.criterion = nn.MSELoss(reduction='sum')
+        self.criterion = weighted_mse_loss
+
         self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
         #self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=step_size, gamma=gamma)
         self.scheduler = eval(scheduler_input)
@@ -105,7 +113,7 @@ class Learner:
         res = self.model(x, y)
 
         # calculate batch loss
-        loss = self.criterion(res, matrix.flatten(start_dim=1))
+        loss = self.criterion(res, matrix.flatten(start_dim=1), self.loss_weights)
 
         if phase == 'train':
             loss.backward()
@@ -190,7 +198,6 @@ class Learner:
                 iteration=self.current_epoch
             )
 
-
     def train(self):
         self.reset_vars()  # in case this is not the first time
 
@@ -228,7 +235,8 @@ def main(data):
         scheduler_input=data['scheduler_input'],
         best_loss_threshold=data['best_loss_threshold'],
         nonrandom_val_step=data['nonrandom_val_step'],
-        batchnorm_on=batchnorm_on
+        batchnorm_on=batchnorm_on,
+        loss_weights=data['loss_weights']
     )
 
     logging.info("Start training!")
@@ -281,8 +289,13 @@ def get_args():
         required=False,
         default="true",
         help='Toggle batch normalization on regression layers.'
+    ),
+    parser.add_argument(
+        '--loss-weights',
+        required=False,
+        default="[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]",
+        help='Weights for weighted MSE loss.'
     )
-    # scheduler_input
     return vars(parser.parse_args())
 
 
