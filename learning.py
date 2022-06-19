@@ -18,7 +18,7 @@ from torch.optim import lr_scheduler
 from torch.utils.data import Dataset, DataLoader
 
 from clearml import Task
-Task.set_offline(offline_mode=True)
+#Task.set_offline(offline_mode=True)
 task = Task.init(project_name="viz", task_name="test local toggle batch norm")
 clearml_logger = task.get_logger()
 
