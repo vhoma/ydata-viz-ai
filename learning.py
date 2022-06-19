@@ -124,12 +124,13 @@ class Learner:
         self.epoch_loss_list.append(batch_loss)
         logging.debug(f"Epoch #{self.current_epoch}, phase: {phase}, batch #{self.batch_num}: Current loss {batch_loss}\n")
         if phase == "train":
-            clearml_logger.report_scalar(
-                title="batch_loss",
-                series=f"batch_LOSS",
-                value=batch_loss,
-                iteration=self.batch_num + self.current_epoch * len(self.data_loader[phase])
-            )
+            # this logging costs too much...
+            # clearml_logger.report_scalar(
+            #     title="batch_loss",
+            #     series=f"batch_LOSS",
+            #     value=batch_loss,
+            #     iteration=self.batch_num + self.current_epoch * len(self.data_loader[phase])
+            # )
             self.loss_history.append(loss.item())
         self.batch_num += 1
 
