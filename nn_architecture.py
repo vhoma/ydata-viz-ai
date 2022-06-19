@@ -171,7 +171,7 @@ class Siam_AirNet2(nn.Module):
                 nn.Linear(128, 64),
                 nn.BatchNorm1d(64),
                 nn.ReLU(inplace=True),
-                nn.Linear(64, 12))
+                nn.Linear(64, 1))
         else:
             logging.info("Batch normalization is OFF")
             self.regression = nn.Sequential(
@@ -183,7 +183,7 @@ class Siam_AirNet2(nn.Module):
                 nn.ReLU(inplace=True),
                 nn.Linear(128, 64),
                 nn.ReLU(inplace=True),
-                nn.Linear(64, 12))
+                nn.Linear(64, 1))
 
     def _make_dense2D(self, inChannels, growthRate, nDenseBlocks):
         layers = []

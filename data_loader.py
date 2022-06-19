@@ -123,7 +123,7 @@ class Img3dDataSet(Dataset):
         matrix = torch.from_numpy(matrix[:3, :]).to(self.device)
 
         # convert to torch
-        return t1, t2, matrix
+        return t1, t2, matrix, alpha2 - alpha1
 
     def __len__(self):
         return len(self.names_array)

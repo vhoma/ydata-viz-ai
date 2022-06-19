@@ -100,7 +100,7 @@ class Learner:
         self.best_loss = np.inf
         self.batch_num = 0
 
-    def train_step(self, phase, x, y, matrix):
+    def train_step(self, phase, x, y, matrix, target_angle):
         # Zero the gradients
         self.optimizer.zero_grad()
 
@@ -113,7 +113,7 @@ class Learner:
         res = self.model(x, y)
 
         # calculate batch loss
-        loss = self.criterion(res, matrix.flatten(start_dim=1), self.loss_weights)
+        loss = self.criterion(res, target_angle, self.loss_weights)
 
         if phase == 'train':
             loss.backward()
@@ -167,8 +167,9 @@ class Learner:
         if phase == "val" and self.is_fixed_validation_epoch():
             # once in a while will run an epoch with this flag on
             self.dataset_val.use_fixed_angles = True
-        for x, y, matrix in self.data_loader[phase]:   # iterate through data loader here
-            self.train_step(phase, x, y, matrix)
+        for x, y, matrix, angle in self.data_loader[phase]:   # iterate through data loader here
+            angle = angle.to(self.device)
+            self.train_step(phase, x, y, matrix, angle)
         self.dataset_val.use_fixed_angles = False   # always switch off
 
         if phase == "train":
