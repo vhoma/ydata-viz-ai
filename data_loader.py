@@ -72,7 +72,8 @@ def unzip_data(data_path, archive_path):
 
 
 def normalize(img, min_val, max_val):
-    return (img - min_val) / (max_val - min_val)
+    clipped_img = img.clamp(min_val, max_val)
+    return (clipped_img - min_val) / (max_val - min_val)
 
 
 def transform_img(img, angle, shape, device):

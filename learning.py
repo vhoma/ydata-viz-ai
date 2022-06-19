@@ -202,11 +202,17 @@ class Learner:
     def train(self):
         self.reset_vars()  # in case this is not the first time
 
-        # Iterate throughout the epochs
-        for epoch in range(self.num_epochs):
-            self.current_epoch = epoch
-            for phase in ['train', 'val']:
-                self.train_epoch(phase)
+        try:
+            # Iterate throughout the epochs
+            for epoch in range(self.num_epochs):
+                self.current_epoch = epoch
+                for phase in ['train', 'val']:
+                    self.train_epoch(phase)
+        finally:
+            torch.save(
+                self.model.state_dict(),
+                os.path.join(gettempdir(), f"best_model_{self.current_epoch}_final.pt")
+            )
 
     def is_fixed_validation_epoch(self):
         return self.current_epoch % self.nonrandom_val_step == 0
