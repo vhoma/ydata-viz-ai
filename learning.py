@@ -40,7 +40,8 @@ def weighted_mse_loss(result, target, weight):
 class Learner:
     def __init__(self, data_path, batch_size, batch_size_val, num_epochs, learning_rate, scheduler_input,
                  min_val, max_val, model_state_file, transform_angle_schedule,
-                 best_loss_threshold, nonrandom_val_step, batchnorm_on, loss_weights):
+                 best_loss_threshold, nonrandom_val_step, batchnorm_on, loss_weights,
+                 save_img_epoch_freq, save_img_batch_num):
         self.data_path = data_path
         self.num_epochs = num_epochs
         self.batch_size = batch_size
@@ -49,6 +50,8 @@ class Learner:
         self.best_loss_threshold = best_loss_threshold
         self.nonrandom_val_step = nonrandom_val_step
         self.loss_weights = torch.Tensor(json.loads(loss_weights))
+        self.save_img_epoch_freq = int(save_img_epoch_freq)
+        self.save_img_batch_num = int(save_img_batch_num)
 
         # connect to GPU
         self.device = get_device()
@@ -104,11 +107,6 @@ class Learner:
         # Zero the gradients
         self.optimizer.zero_grad()
 
-        # load to the device
-        # x = x.to(self.device)
-        # y = y.to(self.device)
-        # matrix = matrix.to(self.device)
-
         # run the model
         res = self.model(x, y)
 
@@ -124,14 +122,13 @@ class Learner:
         self.epoch_loss_list.append(batch_loss)
         logging.debug(f"Epoch #{self.current_epoch}, phase: {phase}, batch #{self.batch_num}: Current loss {batch_loss}\n")
         if phase == "train":
-            # this logging costs too much...
-            # clearml_logger.report_scalar(
-            #     title="batch_loss",
-            #     series=f"batch_LOSS",
-            #     value=batch_loss,
-            #     iteration=self.batch_num + self.current_epoch * len(self.data_loader[phase])
-            # )
             self.loss_history.append(loss.item())
+
+        # create image if needed
+        if self.current_epoch % self.save_img_epoch_freq == 0 and self.batch_num == self.save_img_batch_num:
+            grid_img = dl.show_eval_overlap(x, y, res)
+            clearml_logger.report_image("show_eval", f"batch_eval_{phase}", iteration=self.current_epoch, image=grid_img)
+
         self.batch_num += 1
 
     def train_epoch(self, phase):
@@ -243,7 +240,9 @@ def main(data):
         best_loss_threshold=data['best_loss_threshold'],
         nonrandom_val_step=data['nonrandom_val_step'],
         batchnorm_on=batchnorm_on,
-        loss_weights=data['loss_weights']
+        loss_weights=data['loss_weights'],
+        save_img_epoch_freq=data['save_img_epoch_freq'],
+        save_img_batch_num=data['save_img_batch_num']
     )
 
     logging.info("Start training!")
@@ -302,6 +301,18 @@ def get_args():
         required=False,
         default="[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]",
         help='Weights for weighted MSE loss.'
+    ),
+    parser.add_argument(
+        '--save-img-epoch-freq',
+        required=False,
+        default=50,
+        help='Once in few epochs will save results visualisation.'
+    ),
+    parser.add_argument(
+        '--save-img-batch-num',
+        required=False,
+        default=0,
+        help='Choose batch number that will be used for visualisation.'
     )
     return vars(parser.parse_args())
 
