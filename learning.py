@@ -51,7 +51,7 @@ class Learner:
         self.nonrandom_val_step = nonrandom_val_step
         self.loss_weights = torch.Tensor(json.loads(loss_weights))
         self.save_img_epoch_freq = int(save_img_epoch_freq)
-        self.save_img_batch_num = int(save_img_batch_num)
+        self.save_img_batch_num = json.loads(save_img_batch_num)
 
         # connect to GPU
         self.device = get_device()
@@ -125,9 +125,9 @@ class Learner:
             self.loss_history.append(loss.item())
 
         # create image if needed
-        if self.current_epoch % self.save_img_epoch_freq == 0 and self.batch_num == self.save_img_batch_num:
+        if self.current_epoch % self.save_img_epoch_freq == 0 and self.batch_num in self.save_img_batch_num.get(phase, []):
             grid_img = dl.show_eval_overlap(x, y, res, self.device)
-            clearml_logger.report_image("show_eval", f"batch_eval_{phase}", iteration=self.current_epoch, image=grid_img)
+            clearml_logger.report_image("show_eval", f"batch_eval_{phase}_{self.batch_num}", iteration=self.current_epoch, image=grid_img)
 
         self.batch_num += 1
 
@@ -312,8 +312,8 @@ def get_args():
     parser.add_argument(
         '--save-img-batch-num',
         required=False,
-        default=0,
-        help='Choose batch number that will be used for visualisation.'
+        default='{"train": [0], "val": [0, 1]}',
+        help='Choose batch number that will be used for visualisation. As a json dict i.e. "{"train": [0, 2], "val": [0, 2, 4]}"'
     )
     return vars(parser.parse_args())
 
