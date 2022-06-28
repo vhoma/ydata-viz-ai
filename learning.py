@@ -126,7 +126,6 @@ class Learner:
             self.loss_history.append(loss.item())
 
         # create image if needed
-        print(file_ids)   # debug
         if self.current_epoch % self.save_img_epoch_freq == 0 and self.batch_num in self.save_img_batch_num.get(phase, []):
             grid_img = dl.show_eval_overlap(
                 x, y, res, self.device,
