@@ -52,6 +52,7 @@ class Learner:
         self.loss_weights = torch.Tensor(json.loads(loss_weights))
         self.save_img_epoch_freq = int(save_img_epoch_freq)
         self.save_img_batch_num = json.loads(save_img_batch_num)
+        self.max_val = max_val
 
         # connect to GPU
         self.device = get_device()
@@ -103,7 +104,7 @@ class Learner:
         self.best_loss = np.inf
         self.batch_num = 0
 
-    def train_step(self, phase, x, y, matrix):
+    def train_step(self, phase, x, y, matrix, file_ids):
         # Zero the gradients
         self.optimizer.zero_grad()
 
@@ -125,9 +126,20 @@ class Learner:
             self.loss_history.append(loss.item())
 
         # create image if needed
+        print(file_ids)   # debug
         if self.current_epoch % self.save_img_epoch_freq == 0 and self.batch_num in self.save_img_batch_num.get(phase, []):
-            grid_img = dl.show_eval_overlap(x, y, res, self.device)
-            clearml_logger.report_image("show_eval", f"batch_eval_{phase}_{self.batch_num}", iteration=self.current_epoch, image=grid_img)
+            grid_img = dl.show_eval_overlap(
+                x, y, res, self.device,
+                max_val=self.max_val,
+                epoch_num=self.current_epoch,
+                scan_num=file_ids
+            )
+            clearml_logger.report_image(
+                "show_eval",
+                f"batch_eval_{phase}_{self.batch_num}",
+                iteration=self.current_epoch,
+                image=grid_img
+            )
 
         self.batch_num += 1
 
@@ -164,8 +176,8 @@ class Learner:
         if phase == "val" and self.is_fixed_validation_epoch():
             # once in a while will run an epoch with this flag on
             self.dataset_val.use_fixed_angles = True
-        for x, y, matrix in self.data_loader[phase]:   # iterate through data loader here
-            self.train_step(phase, x, y, matrix)
+        for x, y, matrix, file_names in self.data_loader[phase]:   # iterate through data loader here
+            self.train_step(phase, x, y, matrix, file_names)
         self.dataset_val.use_fixed_angles = False   # always switch off
 
         if phase == "train":
