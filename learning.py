@@ -126,7 +126,7 @@ class Learner:
 
         # create image if needed
         if self.current_epoch % self.save_img_epoch_freq == 0 and self.batch_num == self.save_img_batch_num:
-            grid_img = dl.show_eval_overlap(x, y, res)
+            grid_img = dl.show_eval_overlap(x, y, res, self.device)
             clearml_logger.report_image("show_eval", f"batch_eval_{phase}", iteration=self.current_epoch, image=grid_img)
 
         self.batch_num += 1

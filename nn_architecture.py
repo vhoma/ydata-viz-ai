@@ -131,10 +131,10 @@ class Siam_AirNet2(nn.Module):
         self.flatten = nn.Flatten()
 
         self.firstlayer = nn.Sequential(
+            nn.BatchNorm2d(1),  # can't understand should we use here BN or not and if yes - in which order
             nn.Conv2d(in_channels=1, out_channels=growthRate, kernel_size=3, stride=1, padding=1),
-            # (320 - 3 + 2*1)/1 + 1 = 320
-            nn.BatchNorm2d(growthRate),  # can't understand should we use here BN or not and if yes - in which order
             nn.ReLU(inplace=True),
+            # (320 - 3 + 2*1)/1 + 1 = 320
             nn.MaxPool2d(kernel_size=2, stride=2, padding=0))  # (320 - 2)/2 + 1 = 160
         self.dense2D = nn.Sequential()
         self.dense3D = nn.Sequential()
