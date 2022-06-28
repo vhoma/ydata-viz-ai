@@ -142,7 +142,7 @@ class Img3dDataSet(Dataset):
         return res
 
 
-def show_eval_overlap(x, y, matrix, device, max_val, epoch_num=None, scan_num=None, loss=None):
+def show_eval_overlap(x, y, matrix, device, max_val, epoch_num=None, scan_num=None):
     x_chan = x.unsqueeze(dim=1)  # add channels dimention
     y_chan = y.unsqueeze(dim=1)
     x_new = warp_affine3d(x_chan, matrix.reshape((matrix.shape[0], 3, 4)), x.shape[-3:])  # transform
@@ -156,7 +156,7 @@ def show_eval_overlap(x, y, matrix, device, max_val, epoch_num=None, scan_num=No
     img = ToPILImage()(grid)
 
     # add scan numbers and epoch num
-    if scan_num and epoch_num and loss:
+    if scan_num and epoch_num:
         d = ImageDraw.Draw(img)
         for i in range(x.shape[0]):
             # add scan id
