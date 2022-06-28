@@ -206,9 +206,10 @@ class Learner:
                 for phase in ['train', 'val']:
                     self.train_epoch(phase)
         finally:
+            logging.info("Finished! Save latest model...")
             torch.save(
                 self.model.state_dict(),
-                os.path.join(gettempdir(), f"best_model_{self.current_epoch}_final.pt")
+                os.path.join(gettempdir(), f"last_model_{self.current_epoch}.pt")
             )
 
     def is_fixed_validation_epoch(self):
