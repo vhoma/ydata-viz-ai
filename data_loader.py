@@ -140,12 +140,15 @@ class Img3dDataSet(Dataset):
         return res
 
 
-def show_eval_overlap(x, y, matrix):
+def show_eval_overlap(x, y, matrix, device):
     x_chan = x.unsqueeze(dim=1)   # add channels dimention
     y_chan = y.unsqueeze(dim=1)
     x_new = warp_affine3d(x_chan, matrix.reshape((matrix.shape[0], 3, 4)), x.shape[-3:])   # transform
     # take 1 slice from every image and create a grid image
-    grid = make_grid(torch.cat((y_chan, x_new, torch.zeros(x_new.shape)), dim=1)[:, :, 10, :, :], nrow=4)
+    y_slice = y_chan[:, :, 10, :, :]
+    x_new_slice = x_new[:, :, 10, :, :]
+    chan3 = torch.zeros(x_new_slice.shape).to(device)
+    grid = make_grid(torch.cat((y_slice, x_new_slice, chan3), dim=1), nrow=4)
     img = ToPILImage()(grid)
     return img
 
