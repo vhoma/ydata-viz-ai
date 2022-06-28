@@ -33,10 +33,15 @@ def get_device():
     return torch.device(device_name)
 
 
+def weighted_mse_loss(result, target, weight):
+    return ((weight * (result - target)) ** 2).sum()
+
+
 class Learner:
     def __init__(self, data_path, batch_size, batch_size_val, num_epochs, learning_rate, scheduler_input,
                  min_val, max_val, model_state_file, transform_angle_schedule,
-                 best_loss_threshold, nonrandom_val_step, batchnorm_on):
+                 best_loss_threshold, nonrandom_val_step, batchnorm_on, loss_weights,
+                 save_img_epoch_freq, save_img_batch_num):
         self.data_path = data_path
         self.num_epochs = num_epochs
         self.batch_size = batch_size
@@ -44,6 +49,9 @@ class Learner:
         self.transform_angle_schedule = json.loads(transform_angle_schedule)
         self.best_loss_threshold = best_loss_threshold
         self.nonrandom_val_step = nonrandom_val_step
+        self.loss_weights = torch.Tensor(json.loads(loss_weights))
+        self.save_img_epoch_freq = int(save_img_epoch_freq)
+        self.save_img_batch_num = json.loads(save_img_batch_num)
 
         # connect to GPU
         self.device = get_device()
@@ -71,9 +79,12 @@ class Learner:
             model.load_state_dict(torch.load(model_state_file, map_location=torch.device('cpu')))
 
         self.model = model.to(self.device)
+        self.loss_weights = self.loss_weights.to(self.device)
 
         # other training vars
-        self.criterion = nn.MSELoss(reduction='sum')
+        #self.criterion = nn.MSELoss(reduction='sum')
+        self.criterion = weighted_mse_loss
+
         self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
         #self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=step_size, gamma=gamma)
         self.scheduler = eval(scheduler_input)
@@ -96,16 +107,11 @@ class Learner:
         # Zero the gradients
         self.optimizer.zero_grad()
 
-        # load to the device
-        # x = x.to(self.device)
-        # y = y.to(self.device)
-        # matrix = matrix.to(self.device)
-
         # run the model
         res = self.model(x, y)
 
         # calculate batch loss
-        loss = self.criterion(res, matrix.flatten(start_dim=1))
+        loss = self.criterion(res, matrix.flatten(start_dim=1), self.loss_weights)
 
         if phase == 'train':
             loss.backward()
@@ -116,13 +122,13 @@ class Learner:
         self.epoch_loss_list.append(batch_loss)
         logging.debug(f"Epoch #{self.current_epoch}, phase: {phase}, batch #{self.batch_num}: Current loss {batch_loss}\n")
         if phase == "train":
-            clearml_logger.report_scalar(
-                title="batch_loss",
-                series=f"batch_LOSS",
-                value=batch_loss,
-                iteration=self.batch_num + self.current_epoch * len(self.data_loader[phase])
-            )
             self.loss_history.append(loss.item())
+
+        # create image if needed
+        if self.current_epoch % self.save_img_epoch_freq == 0 and self.batch_num in self.save_img_batch_num.get(phase, []):
+            grid_img = dl.show_eval_overlap(x, y, res, self.device)
+            clearml_logger.report_image("show_eval", f"batch_eval_{phase}_{self.batch_num}", iteration=self.current_epoch, image=grid_img)
+
         self.batch_num += 1
 
     def train_epoch(self, phase):
@@ -190,15 +196,21 @@ class Learner:
                 iteration=self.current_epoch
             )
 
-
     def train(self):
         self.reset_vars()  # in case this is not the first time
 
-        # Iterate throughout the epochs
-        for epoch in range(self.num_epochs):
-            self.current_epoch = epoch
-            for phase in ['train', 'val']:
-                self.train_epoch(phase)
+        try:
+            # Iterate throughout the epochs
+            for epoch in range(self.num_epochs):
+                self.current_epoch = epoch
+                for phase in ['train', 'val']:
+                    self.train_epoch(phase)
+        finally:
+            logging.info("Finished! Save latest model...")
+            torch.save(
+                self.model.state_dict(),
+                os.path.join(gettempdir(), f"last_model_{self.current_epoch}.pt")
+            )
 
     def is_fixed_validation_epoch(self):
         return self.current_epoch % self.nonrandom_val_step == 0
@@ -228,7 +240,10 @@ def main(data):
         scheduler_input=data['scheduler_input'],
         best_loss_threshold=data['best_loss_threshold'],
         nonrandom_val_step=data['nonrandom_val_step'],
-        batchnorm_on=batchnorm_on
+        batchnorm_on=batchnorm_on,
+        loss_weights=data['loss_weights'],
+        save_img_epoch_freq=data['save_img_epoch_freq'],
+        save_img_batch_num=data['save_img_batch_num']
     )
 
     logging.info("Start training!")
@@ -281,8 +296,25 @@ def get_args():
         required=False,
         default="true",
         help='Toggle batch normalization on regression layers.'
+    ),
+    parser.add_argument(
+        '--loss-weights',
+        required=False,
+        default="[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]",
+        help='Weights for weighted MSE loss.'
+    ),
+    parser.add_argument(
+        '--save-img-epoch-freq',
+        required=False,
+        default=50,
+        help='Once in few epochs will save results visualisation.'
+    ),
+    parser.add_argument(
+        '--save-img-batch-num',
+        required=False,
+        default='{"train": [0], "val": [0, 1]}',
+        help='Choose batch number that will be used for visualisation. As a json dict i.e. "{"train": [0, 2], "val": [0, 2, 4]}"'
     )
-    # scheduler_input
     return vars(parser.parse_args())
 
 

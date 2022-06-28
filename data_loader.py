@@ -9,6 +9,8 @@ from scipy.ndimage import affine_transform
 import Affine3D as affine
 import torch
 from torch.utils.data import Dataset, DataLoader
+from torchvision.transforms import ToPILImage
+from torchvision.utils import make_grid
 from kornia.geometry.transform import warp_affine3d
 
 
@@ -72,7 +74,8 @@ def unzip_data(data_path, archive_path):
 
 
 def normalize(img, min_val, max_val):
-    return (img - min_val) / (max_val - min_val)
+    clipped_img = img.clamp(min_val, max_val)
+    return (clipped_img - min_val) / (max_val - min_val)
 
 
 def transform_img(img, angle, shape, device):
@@ -135,6 +138,19 @@ class Img3dDataSet(Dataset):
             res.append((alpha1, alpha2))
         logging.info(f"Fixed transform angles:\n{res}")
         return res
+
+
+def show_eval_overlap(x, y, matrix, device):
+    x_chan = x.unsqueeze(dim=1)   # add channels dimention
+    y_chan = y.unsqueeze(dim=1)
+    x_new = warp_affine3d(x_chan, matrix.reshape((matrix.shape[0], 3, 4)), x.shape[-3:])   # transform
+    # take 1 slice from every image and create a grid image
+    y_slice = y_chan[:, :, 10, :, :]
+    x_new_slice = x_new[:, :, 10, :, :]
+    chan3 = torch.zeros(x_new_slice.shape).to(device)
+    grid = make_grid(torch.cat((y_slice, x_new_slice, chan3), dim=1), nrow=4)
+    img = ToPILImage()(grid)
+    return img
 
 
 def set_log_level(log_level):
